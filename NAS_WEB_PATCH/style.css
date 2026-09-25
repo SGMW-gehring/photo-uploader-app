@@ -1,0 +1,627 @@
+:root {
+  --bg: #0f1115;
+  --card: #1a1d24;
+  --line: #2a2e38;
+  --text: #e8eaed;
+  --muted: #9aa0aa;
+  --primary: #2f7bff;
+  --primary-d: #1f5fe0;
+  --ok: #2ecc71;
+  --warn: #ffb020;
+  --danger: #ff5c5c;
+  /* v4.9.5：快门按钮含「圆环 + 提示小字」，横屏单行底栏的高度由它决定（原 92px 不够，会挤到缩略条） */
+  --bar-h: 112px;
+  /* v4.9.5：取景框几何（宽 / 高 / 中心纵向位置）—— 原 88%×30% 对老手机偏小，
+     贴近拍时条码会被框裁掉一半（"识别不全"）。放大后框内抓帧范围更大，识别只增不减。 */
+  --box-w: 94%;
+  --box-h: 36%;
+  --box-top: 43%;
+  /* v4.9.5：快门圆环直径（提示小字另占一行，故按钮高度 = 直径 + 小字） */
+  --shoot: clamp(58px, 18vw, 78px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; padding: 0;
+  background: #000; color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  height: 100%;
+  overscroll-behavior: none;
+  /* v4.8：小屏机型反馈「上传页溢出屏幕、找不到拍照按钮」——
+     根因常是页面被滚动/缩放后底部栏被推出可视区。锁死整页不可滚动，底栏永远贴底可见。 */
+  overflow: hidden;
+  position: fixed; inset: 0;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+}
+body { display: block; width: 100%; height: 100%; }
+
+/* ============ 单屏主相机 ============ */
+.main {
+  position: fixed; inset: 0;
+  width: 100%; height: 100dvh;
+  background: #000; overflow: hidden;
+}
+#cam {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  /* v27 修复「画面被放大」：改用 contain 完整显示相机画面（上下留黑边），
+     不再用 cover 裁切铺满——cover 会把 4:3 画面横向裁掉大半，视觉放大 2 倍多，条码难进视野 */
+  object-fit: contain; display: block; background: #000;
+  z-index: 0;
+}
+/* v4.3.1：原生相机预览层挂载点（方案①）；v4.7.1 起预览改走 toBack 模式（见下），此节点保留作兼容 */
+#camPreview { display: none; background: #000; z-index: 0; }
+/* ===== v4.7.1：toBack 预览模式（真机视频定位修复）=====
+   camera-preview 的 toBack:true 会把原生取景层放到 WebView 后层并令 WebView 透明，
+   页面需要在取景区「挖透明洞」才能透出画面：body.cam-on 时主容器与 video 占位转透明，
+   顶栏/底栏保持半透明渐变叠在取景之上（视觉同原生相机 App）。 */
+body.cam-on .main { background: transparent; }
+body.cam-on #cam { visibility: hidden; background: transparent; }
+body.cam-on #camPreview { background: transparent; }
+.flash-anim { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 3; }
+.flash-anim.on { animation: flash .25s ease; }
+@keyframes flash { 0% { opacity: .9; } 100% { opacity: 0; } }
+
+/* 顶部覆盖栏 */
+.topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.62), rgba(0,0,0,0));
+  display: flex; flex-direction: column; gap: 6px;
+  pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
+.top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.conn-wrap { display: flex; align-items: center; gap: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 6px rgba(0,0,0,.6); }
+.dot.ok { background: var(--ok); }
+.dot.err { background: var(--danger); }
+.conn { font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; }
+/* v4.8：网页端版本标识（与 App 启动页底部的「App v4.8」对应，两端同步一眼可核对） */
+.ver-tag {
+  font-size: 10px; color: #fff; opacity: .55; margin-left: 4px;
+  padding: 1px 5px; border: 1px solid rgba(255,255,255,.25); border-radius: 6px;
+  text-shadow: 0 1px 2px #000; user-select: none;
+}
+.conn.ok { color: #bff3d0; }
+.conn.err { color: #ffc9c9; }
+.switches { display: flex; gap: 10px; }
+.sw-inline { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; }
+
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* v4.8：追溯码 chip 必须完整显示（Xiaomi 17 Pro Max 等机型反馈「识别出来填不到框里」——
+   长码被 56vw + ellipsis 截断成「8484…」）。
+   v4.9.2：改为「独占一整行 + 不折行」——order:1 把它排到最后、flex-basis:100% 撑满整行，
+   整条码单行显示（不再竖着折成两三行）；超长码由 JS 按长度自动降字号（.long/.xlong/.xxlong）。 */
+#codeChip {
+  order: 1; flex: 1 1 100%; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal;
+  border-radius: 12px; line-height: 1.5; text-align: left;
+}
+#codeChip.long { font-size: 11px; letter-spacing: .2px; }
+#codeChip.xlong { font-size: 10px; letter-spacing: 0; }
+#codeChip.xxlong { font-size: 9px; letter-spacing: -.2px; }
+.chip {
+  background: rgba(0,0,0,.5); color: #fff; border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px; padding: 8px 12px; font-size: 12px; cursor: pointer;
+  max-width: 56vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 2px #000;
+}
+.chip.code { flex: 1 1 120px; min-width: 0; font-weight: 600; white-space: normal; word-break: break-all; line-height: 1.35; }
+.chip.ghost { background: rgba(0,0,0,.32); }
+/* v4.9.3：顶栏「查询照片」是 a 标签，去掉链接默认下划线，与其他 chip 观感一致 */
+a.chip { text-decoration: none; }
+.chip:active { background: rgba(0,0,0,.7); box-shadow: 0 0 0 2px rgba(47,123,255,.5); }
+.chip.warn { border-color: var(--warn); color: var(--warn); }
+/* 换编码：大按钮、高亮边框，易点中 */
+#btnNewQr {
+  flex: 0 0 auto; max-width: none; overflow: visible;
+  padding: 12px 20px; font-size: 14px; font-weight: 700; min-height: 44px;
+  border: 1px solid var(--primary); background: rgba(47,123,255,.28); color: #fff;
+}
+#btnNewQr:active { background: rgba(47,123,255,.55); }
+
+/* 小开关 */
+.switch {
+  width: 40px; height: 22px; border-radius: 11px; background: #555;
+  border: none; position: relative; cursor: pointer; padding: 0; transition: background .2s ease;
+}
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s ease; }
+.switch[aria-checked="true"] { background: var(--primary); }
+.switch[aria-checked="true"] .knob { transform: translateX(18px); }
+
+/* 手电筒悬浮按钮 */
+.float-torch {
+  position: absolute; top: calc(78px + env(safe-area-inset-top)); right: 12px; z-index: 6;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.2); color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.float-torch.on { color: var(--warn); border-color: var(--warn); }
+
+/* v4.9.2：计数胶囊合并进「上传」按钮内部（竖屏不再单独占一个格子，横屏不再悬浮在栏外），
+   作为按钮里的第二行小胶囊显示「已拍张数/目标」 */
+.count-badge {
+  margin-top: 1px; padding: 1px 9px; border-radius: 999px;
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.28);
+  font-size: 11px; line-height: 1.5; color: inherit; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 1px; pointer-events: none;
+}
+.bar-btn.upload:disabled .count-badge { border-color: rgba(255,255,255,.16); }
+.count-badge b { font-size: 14px; }
+/* 竖屏底部「换编码」按钮（与顶部同款高亮，仅在竖屏显示）
+   v4.9.3：nowrap + 收字号收内边距 —— 竖屏格子较窄，「更换追溯码」5 个字不再折成两行 */
+#btnNewQr2 { display: none; }
+#btnNewQr2 {
+  flex: 0 0 auto; padding: 12px 10px; font-size: 13px; font-weight: 700; min-height: 44px;
+  border: 1px solid var(--primary); background: rgba(47,123,255,.28); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#btnNewQr2:active { background: rgba(47,123,255,.55); }
+/* v4.9.5：实时上传进度改为「追溯码正下方」的一枚 chip（左对齐 + 外框），
+   不再悬在画面右上角被手电筒/变焦按钮挤到，也与追溯码同属顶栏信息区，视线一致。
+   内容为空时整块隐藏（JS 控制 hidden），不留一个空框占地方。 */
+.rt-chip {
+  order: 2; flex: 1 1 100%; max-width: 100%;
+  display: flex; align-items: center; gap: 6px;
+  align-self: stretch; box-sizing: border-box;
+  padding: 3px 10px; margin-top: 2px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: rgba(0,0,0,.42);
+  font-size: 11px; line-height: 1.35; color: #eaf0fb; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rt-chip[hidden] { display: none; }
+.rt-chip b { color: var(--ok); }
+
+/* v4.9.4：拍照后画面区大图回显（已拍照片确认），点击关闭 / 2.6 秒自动消失 */
+.last-shot {
+  position: absolute; inset: 0; z-index: 7; display: none;
+  align-items: center; justify-content: center; background: rgba(0,0,0,.88);
+  cursor: pointer;
+}
+.last-shot.show { display: flex; animation: lsIn .18s ease; }
+.last-shot img {
+  max-width: 88%; max-height: 72%; border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.6); object-fit: contain;
+}
+.last-shot .ls-badge {
+  position: absolute; bottom: calc(var(--bar-h) + 14px); left: 50%; transform: translateX(-50%);
+  font-size: 12px; color: #fff; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.22);
+  border-radius: 999px; padding: 6px 14px; text-shadow: 0 1px 2px #000; white-space: nowrap;
+  pointer-events: none;
+}
+@keyframes lsIn { from { opacity: 0; } to { opacity: 1; } }
+/* v4.9.5：拍照提示 —— 「公章式」弧形环绕文字（沿快门圆环上缘，像公章顶部那圈字）
+   外层 i 负责「绕圆心转到位」（rotate 到位 + 沿半径外移），内层 b 固定 rotate(90°) 把字头转回朝外；
+   两层拆开是为了让百分比位移（居中）不会被旋转带偏。
+   --a 是每个字相对「正上方」的偏角：-100°（左下端）… +100°（右下端），共 9 字完整原句。 */
+.shoot-arc {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 2;
+  pointer-events: none;
+}
+.shoot-arc i {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  transform-origin: 0 0;
+  transform: rotate(calc(var(--a) - 90deg)) translateX(calc(var(--shoot) / 2 + 6px));
+}
+.shoot-arc i b {
+  position: absolute; left: 0; top: 0;
+  /* 恒定 +90°：抵消外层的 -90° 基准，字头沿半径朝弧外（正上方的字正立、两侧字随弧倾） */
+  transform: translate(-50%, -50%) rotate(90deg);
+  font-weight: 700; font-size: clamp(9px, calc(var(--shoot) / 7), 13px); line-height: 1;
+  color: rgba(255,255,255,.95); white-space: nowrap;
+  /* 描边 + 投影：无论压在亮画面还是暗画面上都读得清 */
+  text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,.9);
+}
+
+/* 取景框引导（识别模式显示） */
+.scan-frame { display: none; position: absolute; inset: 0; z-index: 4; }
+.scan-frame.show { display: block; }
+/* v4.9.5：取景框整体放大（老手机/近距离时条码不再被框裁掉一半）。
+   解码链路是「框内原尺寸 → 整帧 2400 兜底 → NAS 服务端 → OCR」，框只是"取景范围"：
+   框变大＝框内抓到的像素更多（抓帧从不放大也不缩小到 1600 以下），识别只会更好，
+   且整帧兜底完全没动，最坏情况与改之前一致 —— 识别能力不会下降。 */
+.scan-box {
+  position: absolute; left: 50%; top: var(--box-top); transform: translate(-50%, -50%);
+  width: var(--box-w); height: var(--box-h);
+  border: 2px solid var(--primary); border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
+}
+.scan-line {
+  position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  box-shadow: 0 0 8px var(--primary); animation: scan-move 2.2s ease-in-out infinite;
+}
+@keyframes scan-move { 0% { top: 6%; opacity: .2; } 50% { top: 94%; opacity: 1; } 100% { top: 6%; opacity: .2; } }
+.scan-tip {
+  /* v4.9.5：跟随取景框变量走，框放大后提示文字自动落到框下方，不会被框压住 */
+  position: absolute; top: calc(var(--box-top) + var(--box-h) / 2 + 10px); left: 0; right: 0; text-align: center;
+  color: #fff; font-size: 13px; text-shadow: 0 1px 3px #000; padding: 0 16px;
+}
+.scan-actions { position: absolute; bottom: calc(var(--bar-h) + 12px); left: 0; right: 0; display: flex; gap: 10px; justify-content: center; }
+/* 变焦按钮（识别模式） */
+.zoom-ctrl {
+  position: absolute; right: 12px; top: calc(128px + env(safe-area-inset-top));
+  display: flex; flex-direction: column; gap: 8px; z-index: 5;
+}
+.zoom-btn {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(0,0,0,.55); color: #fff; border: 1px solid rgba(255,255,255,.25);
+  font-size: 22px; line-height: 1; cursor: pointer; text-shadow: 0 1px 2px #000;
+}
+.zoom-btn:active { background: rgba(0,0,0,.8); }
+
+/* 缩略条（可收起；仅在拍过照片后出现，避免与「0/20」计数重复占屏） */
+.thumbs-wrap {
+  position: absolute; left: 0; right: 0; z-index: 5;
+  bottom: calc(var(--bar-h) + env(safe-area-inset-bottom));
+  padding: 0 8px;
+  display: none; flex-direction: column; align-items: stretch; gap: 4px;
+}
+.thumbs-wrap.has { display: flex; }
+.thumbs-wrap.collapsed .thumb-strip { display: none; }
+.thumbs-toggle {
+  align-self: flex-start; background: rgba(0,0,0,.55); color: #fff; border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px; padding: 3px 10px; font-size: 11px; cursor: pointer; text-shadow: 0 1px 2px #000;
+}
+.thumb-strip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 3px 2px;
+  min-height: 54px; align-items: center; scrollbar-width: thin;
+  background: rgba(0,0,0,.35); border-radius: 10px;
+}
+.thumb-strip .thumb {
+  position: relative; flex: 0 0 48px; width: 48px; height: 48px;
+  border-radius: 8px; overflow: hidden; background: #000; border: 1px solid var(--line);
+  cursor: pointer; animation: pop .2s ease;
+}
+@keyframes pop { 0% { transform: scale(.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.thumb-strip .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-strip .thumb .idx {
+  position: absolute; left: 2px; bottom: 2px; background: rgba(0,0,0,.6);
+  color: #fff; font-size: 9px; padding: 0 4px; border-radius: 5px;
+}
+.thumb-strip .thumb .badge {
+  position: absolute; right: 1px; bottom: 1px; width: 15px; height: 15px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; color: #fff;
+}
+.thumb-strip .thumb .badge.up { background: var(--ok); }
+.thumb-strip .thumb .badge.fail { background: var(--danger); }
+.thumb-strip .thumb .spin {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45);
+}
+.thumb-strip .thumb .spin::after {
+  content: ""; width: 20px; height: 20px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 底部常驻操作栏（透明浮层，不挡画面） */
+.capture-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: space-around; gap: 12px;
+  padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0,0,0,.55) 30%, rgba(0,0,0,0));
+  pointer-events: none;
+}
+.capture-bar > * { pointer-events: auto; }
+.bar-btn {
+  flex: 0 0 clamp(70px, 24vw, 88px); display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: #23272f; color: var(--text); border: none; border-radius: 12px;
+  padding: 9px 4px; font-size: 11px; cursor: pointer;
+}
+.bar-btn:active { background: #2c313b; box-shadow: 0 0 0 3px rgba(47,123,255,.55); transform: scale(.94); }
+.bar-btn.upload { background: var(--primary); color: #fff; }
+.bar-btn.upload:disabled { background: #3a3f4a; color: #888; cursor: not-allowed; }
+.bar-btn.upload.busy { opacity: .8; }
+.bar-btn.burst { background: #2f3b52; color: #cfe0ff; }
+.bar-btn.burst:active { background: #2f3b52; box-shadow: 0 0 0 3px rgba(47,123,255,.55); transform: scale(.94); }
+/* v4.4：所有可点元素按下时给一圈高亮，提供明确触感反馈 */
+.btn:active { transform: scale(.97); box-shadow: 0 0 0 3px rgba(47,123,255,.5); }
+.switch:active { box-shadow: 0 0 0 3px rgba(47,123,255,.45); }
+.btn.shoot:active .shoot-core { box-shadow: 0 0 0 4px rgba(47,123,255,.6); }
+button:focus-visible, .chip:focus-visible, .switch:focus-visible { outline: 3px solid rgba(47,123,255,.8); outline-offset: 2px; }
+
+/* v4.9.5：快门按钮 = 「圆环 + 顶部弧形提示小字」的整体（原先只有圆环，小字绝对定位吊在按钮外面，
+   被底部安全区/系统手势条挡住）。弧形字沿圆环上缘排布（公章顶部样式），
+   绝对定位不占布局空间、可超出按钮顶（overflow 默认可见），按钮底边仍与旁边按钮严格齐平。 */
+.btn.shoot {
+  position: relative; flex: 0 0 auto;
+  width: var(--shoot); height: auto; border-radius: 50%;
+  background: transparent; border: none;
+  padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+}
+.shoot-circle {
+  position: relative; display: block; flex: 0 0 auto;
+  width: var(--shoot); height: var(--shoot);
+}
+.shutter-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.shutter-ring .ring-bg { fill: none; stroke: rgba(255,255,255,.25); stroke-width: 5; }
+.shutter-ring .ring-fg {
+  fill: none; stroke: var(--primary); stroke-width: 5; stroke-linecap: round;
+  stroke-dasharray: 213.6; stroke-dashoffset: 213.6;
+  transition: stroke-dashoffset .25s ease, stroke .25s ease;
+}
+.btn.shoot.done .shutter-ring .ring-fg { stroke: var(--ok); }
+/* v4.9.5：白色核心改为在 .shoot-circle 内绝对居中（原先靠 flex 撑开，现已移入 circle 容器） */
+.shoot-core {
+  position: absolute; left: 13%; top: 13%; width: 74%; height: 74%;
+  border-radius: 50%; background: #fff;
+  outline: 3px solid var(--primary); outline-offset: 2px; transition: transform .08s ease;
+}
+.btn.shoot:active .shoot-core { transform: scale(.82); background: #eee; }
+.btn.shoot:disabled { opacity: .5; }
+.btn.shoot.disabled .shoot-core { outline-color: #888; }
+
+/* 通用按钮 */
+.btn {
+  border: none; border-radius: 12px; padding: 13px 16px; font-size: 15px; font-weight: 600;
+  cursor: pointer; color: #fff; background: var(--primary); transition: transform .05s ease, background .2s ease;
+}
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--primary); }
+.btn.primary:disabled { background: #3a3f4a; color: #777; cursor: not-allowed; }
+.btn.ghost { background: #23272f; color: var(--text); }
+.btn.danger { background: var(--danger); }
+.btn.block { width: 100%; }
+.btn.sm { padding: 9px 16px; font-size: 13px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 14px; }
+.modal-actions .btn { flex: 1; }
+
+/* 弹层 */
+.modal {
+  position: fixed; inset: 0; z-index: 40; display: none;
+  align-items: center; justify-content: center; padding: 20px;
+  background: rgba(0,0,0,.6);
+}
+.modal.show { display: flex; }
+.modal-card {
+  width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 16px; padding: 20px;
+}
+.modal-card h3 { margin: 0 0 12px; font-size: 17px; }
+.modal-card .hint { color: var(--muted); font-size: 13px; margin: 10px 0 14px; line-height: 1.5; }
+/* v4.9.2：开启自动识别前的耗电/发热告知 */
+.modal-card .hint.warn-text { color: var(--text); }
+.modal-card .hint.warn-text .hl { color: var(--warn); font-weight: 700; }
+.modal-card input[type="text"] {
+  width: 100%; background: #11141a; border: 1px solid var(--line); color: var(--text);
+  border-radius: 10px; padding: 12px 14px; font-size: 16px; outline: none;
+}
+.modal-card input[type="text"]:focus { border-color: var(--primary); }
+
+/* Toast */
+.toast {
+  position: fixed; left: 50%; bottom: calc(var(--bar-h) + 24px); transform: translateX(-50%) translateY(20px);
+  background: #000d; color: #fff; padding: 10px 16px; border-radius: 10px;
+  font-size: 14px; opacity: 0; pointer-events: none; transition: all .25s ease; z-index: 50;
+  max-width: 86%; display: flex; align-items: center; gap: 12px;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.toast-btn {
+  background: none; border: none; color: var(--primary); font-size: 14px; font-weight: 600; cursor: pointer; padding: 0; display: none;
+}
+.toast-btn.show { display: block; }
+
+/* ============ 竖屏适配（底部栏网格重排） ============ */
+@media (orientation: portrait) {
+  /* 竖屏底部栏为两行（换编码/连拍 + 识别/上传，快门跨两行居中），同步抬高 --bar-h，
+     使缩略条、scan-actions、toast 等依赖该变量的浮层随之上移，不再与底部栏重叠。
+     v4.9.2：连拍移到上传正上方（右上格）；计数并入上传按钮，--bar-h 再抬 8px 容纳按钮内第二行胶囊 */
+  :root { --bar-h: 158px; }
+  .capture-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "newqr shoot burst"
+      "scan  shoot upload";
+    gap: 8px;
+    align-items: end;
+    justify-items: stretch;
+  }
+  #btnNewQr2 { display: flex; grid-area: newqr; }
+  #btnScan { grid-area: scan; }
+  /* v4.9.5：快门在中间列居中（网格 justify-items:stretch 对有固定宽度的项等同 start，
+     不写这行快门会贴左，提示小字也会跟着偏） */
+  #btnShoot { grid-area: shoot; justify-self: center; align-self: end; }
+  #btnBurst { grid-area: burst; }
+  #btnUpload { grid-area: upload; }
+  /* v4.9.2：追溯码独占一行后顶栏变高，以下浮层同步下移，避免压住追溯码 */
+  /* v4.9.5：顶栏多出「实时上传进度」一行，以下浮层继续下移避让（原 144 / 196） */
+  .float-torch { top: calc(166px + env(safe-area-inset-top)); }
+  .zoom-ctrl { top: calc(218px + env(safe-area-inset-top)); }
+  #btnNewQr { display: none; }
+  /* 实时上传进度 chip：竖屏独占一行，紧跟追溯码下方、左对齐 */
+  #rtStatus { flex: 1 1 100%; }
+  /* v4.9.4：竖屏把「连接状态/版本」与三个开关并成一行（原分两行太高） */
+  .top-row { flex-wrap: nowrap; }
+  .conn-wrap { gap: 4px; }
+  .conn { font-size: 11px; }
+  .ver-tag { padding: 1px 4px; margin-left: 2px; }
+  .switches { gap: 7px; }
+  .sw-inline { font-size: 10px; gap: 4px; }
+  .switch { width: 34px; height: 19px; }
+  .switch .knob { width: 15px; height: 15px; }
+  .switch[aria-checked="true"] .knob { transform: translateX(15px); }
+}
+
+/* ============ 横屏适配 ============ */
+@media (orientation: landscape) {
+  .topbar { padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 3px; gap: 3px; }
+  .top-row { flex-wrap: nowrap; }
+  .chip { padding: 6px 10px; font-size: 11px; max-width: 36vw; }
+  /* v4.9.2：横屏宽度充裕，追溯码不再强占整行（否则顶栏白白吃掉一行高度），
+     但仍保持 order:1 排在最后 + 不折行，宽度不够时整块落到第二行 */
+  #codeChip { flex: 0 1 auto; max-width: min(60vw, 560px); }
+  #btnNewQr { padding: 10px 16px; font-size: 13px; min-height: 40px; max-width: none; }
+  /* 取景框横屏大幅放大：条码尽量占满高度（v4.9.5：由 66%×74% 加到 74%×80%） */
+  :root { --box-w: 74%; --box-h: 76%; --box-top: 48%; }
+  /* v4.9.5：横屏框加高到 76% 后，提示文字必然落在框内 —— 改成「字幕式」半透明胶囊，
+     贴在动作按钮上方，压在画面上也能读清（此前是裸文字压在取景框线上，看不清还显乱） */
+  .scan-tip {
+    top: auto; bottom: calc(var(--bar-h) + 52px); font-size: 12px;
+    width: -webkit-fit-content; width: fit-content; margin: 0 auto;
+    background: rgba(0,0,0,.55); padding: 5px 14px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.16); white-space: nowrap; max-width: calc(100% - 24px);
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .zoom-ctrl { right: auto; left: 12px; top: 50%; }
+  .zoom-btn { width: 40px; height: 40px; font-size: 19px; }
+  .scan-actions { bottom: calc(var(--bar-h) + 4px); gap: 8px; }
+  .scan-actions .btn.sm { padding: 7px 12px; font-size: 12px; }
+  /* 缩略条横屏改为右侧竖向滚动 */
+  .thumbs-wrap {
+    left: auto; right: 8px; top: 60px; bottom: calc(var(--bar-h) + env(safe-area-inset-bottom));
+    width: 78px; align-items: stretch;
+  }
+  .thumbs-wrap.collapsed { display: none; }
+  .thumbs-toggle { align-self: stretch; padding: 4px 8px; font-size: 11px; }
+  .thumb-strip {
+    flex-direction: column; overflow-y: auto; overflow-x: hidden; align-content: start;
+    min-height: 0; max-height: none; padding: 4px;
+  }
+  .thumb-strip .thumb { flex: 0 0 auto; width: 60px; height: 60px; }
+  /* 横屏下顶栏元素下移避让，手电筒移到底部左侧 */
+  /* v4.9.2：计数已在「上传」按钮内部，横屏不再单独悬浮到栏外
+     v4.9.5：实时上传进度已并入顶栏（横屏高度紧张，让它与追溯码同一行，空间够就并排） */
+  /* v4.9.5：实时上传进度独占一行 —— 用容器伪元素当「换行符」（order 介于追溯码与进度之间），
+     换行后进度 chip 宽度收为内容宽、靠左（margin-right:auto），
+     不再拉满整行留一大段空框；进度隐藏时换行符高度为 0，不留空行 */
+  .chip-row::after { content: ''; flex: 1 1 100%; order: 1; height: 0; margin: 0; border: 0; }
+  #rtStatus {
+    order: 2; flex: 0 1 auto; max-width: 100%; margin-top: 2px; margin-left: 0;
+    font-size: 10px; padding: 2px 9px; margin-right: auto;
+  }
+  .float-torch { top: auto; bottom: calc(var(--bar-h) + 16px); left: 12px; right: auto; width: 40px; height: 40px; }
+  /* v4.7 横屏底栏收拢：更换追溯码并入底栏，动作一行齐活（换码/识别/快门/连拍/上传）；
+     顶部只留连接状态、开关与信息芯片，不再混入操作按钮 */
+  #btnNewQr { display: none; }
+  #btnNewQr2 { display: flex; padding: 10px 16px; font-size: 13px; min-height: 40px; }
+  /* v4.9.5：底栏改为「底部对齐」，快门（圆环+弧形提示）与识别/上传等按钮底边齐平 */
+  .capture-bar { justify-content: center; gap: 14px; align-items: flex-end; }
+  /* v4.9.5：横屏底栏只有一行，「上传」按钮里的 0/20 计数胶囊不再另起一行，
+     改为与「上传」文字并排（图标 + 文字 + 计数 同一行），整排按钮等高 */
+  .bar-btn.upload {
+    flex-direction: row; align-items: center; justify-content: center; gap: 5px;
+    flex: 0 0 auto; min-width: clamp(66px, 12vw, 96px); padding: 8px 8px;
+  }
+  .bar-btn.upload svg { width: 18px; height: 18px; flex: 0 0 auto; }
+  .bar-btn.upload .count-badge { margin-top: 0; padding: 0 6px; font-size: 10px; }
+  .bar-btn.upload .count-badge b { font-size: 12px; }
+  #uploadLabel { white-space: nowrap; }
+}
+
+/* ============ 不同手机屏幕适配 ============ */
+/* 小屏手机（宽 ≤ 360px）：顶部信息更紧凑，开关缩小防换行 */
+@media (max-width: 360px) {
+  .chip { padding: 6px 10px; font-size: 11px; }
+  #btnNewQr { padding: 10px 14px; font-size: 13px; min-height: 40px; }
+  .sw-inline { font-size: 10px; gap: 4px; }
+  .switch { width: 34px; height: 19px; }
+  .switch .knob { width: 15px; height: 15px; }
+  .switch[aria-checked="true"] .knob { transform: translateX(15px); }
+  .zoom-btn { width: 40px; height: 40px; font-size: 19px; }
+  .scan-tip { font-size: 12px; }
+}
+/* 矮屏手机（竖屏且高 ≤ 700px）：底部栏压扁，给画面留更多空间 */
+@media (orientation: portrait) and (max-height: 700px) {
+  :root { --bar-h: 146px; }
+  .capture-bar { gap: 6px; padding: 6px 8px calc(8px + env(safe-area-inset-bottom)); }
+  #btnNewQr2 { padding: 8px 14px; min-height: 38px; font-size: 13px; }
+  .bar-btn { padding: 7px 4px; }
+  .count-badge { padding: 1px 8px; font-size: 10px; }
+  .count-badge b { font-size: 12px; }
+}
+/* v4.8：超矮屏（竖屏且高 ≤ 640px，多见于老款/小屏机型）——
+   底栏、顶栏、快门、缩略条整体再压一档，保证「快门」始终在屏内且不被其他浮层挤出可视区 */
+@media (orientation: portrait) and (max-height: 640px) {
+  :root { --bar-h: 134px; }
+  .capture-bar { gap: 4px; padding: 4px 6px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .bar-btn { padding: 6px 3px; font-size: 10px; flex: 0 0 clamp(60px, 22vw, 76px); border-radius: 10px; }
+  :root { --shoot: clamp(52px, 17vw, 64px); }
+  .chip { padding: 5px 9px; font-size: 11px; }
+  .topbar { padding: calc(6px + env(safe-area-inset-top)) 8px 6px; gap: 4px; }
+  .chip-row { gap: 4px; }
+  .thumb-strip { min-height: 44px; }
+  .thumb-strip .thumb { width: 42px; height: 42px; flex: 0 0 42px; }
+  .float-torch { width: 40px; height: 40px; }
+  .count-badge { padding: 0 7px; font-size: 10px; }
+  .count-badge b { font-size: 12px; }
+}
+/* 大屏手机/平板（宽 ≥ 768px）：控件整体放大，更好点按 */
+@media (min-width: 768px) {
+  .chip { font-size: 14px; padding: 10px 14px; }
+  #btnNewQr { font-size: 15px; min-height: 48px; }
+  .bar-btn { font-size: 13px; }
+  .scan-tip { font-size: 15px; }
+  .thumbs-toggle { font-size: 13px; padding: 4px 12px; }
+}
+
+/* 按下即时触感：点击/换编码等操作按钮时立即有缩放反馈，避免「点了没反应」的错觉 */
+.chip, button { -webkit-tap-highlight-color: transparent; transition: transform .08s ease, opacity .08s ease; }
+.chip:active, button:active { transform: scale(.94); }
+.chip:active { opacity: .85; }
+
+/* v4.7：识别到追溯码后快门脉冲两下，提示「现在就能拍」 */
+.btn.shoot.pulse .shoot-core { animation: shootPulse 1.6s ease; }
+@keyframes shootPulse {
+  0%   { box-shadow: 0 0 0 3px rgba(47,123,255,.65); }
+  40%  { box-shadow: 0 0 0 16px rgba(47,123,255,.12); }
+  100% { box-shadow: 0 0 0 3px rgba(47,123,255,.65); }
+}
+
+/* ---------- v25 定格识别弹层 ---------- */
+.freeze-card { width: min(94vw, 560px); }
+.freeze-img-wrap { background:#000; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; max-height:52vh; }
+.freeze-img-wrap img { display:block; max-width:100%; max-height:52vh; object-fit:contain; }
+#freezeTip { text-align:center; margin:10px 0 4px; }
+
+/* ============ 窄屏横屏（手机旋转，高 ≤ 430px） ============ */
+/* 横屏下底部栏为单行 5 控件；老款窄机横屏高度仅 ~320px，需再压一档防横向挤爆 */
+@media (orientation: landscape) and (max-height: 430px) {
+  :root { --bar-h: 88px; }
+  .capture-bar { gap: 6px; padding: 4px 8px calc(6px + env(safe-area-inset-bottom)); }
+  .bar-btn { flex: 0 0 clamp(54px, 15vw, 70px); padding: 5px 2px; font-size: 10px; gap: 2px; }
+  .bar-btn svg { width: 18px; height: 18px; }
+  :root { --shoot: clamp(46px, 13vw, 62px); }
+  .count-badge { padding: 3px 9px; font-size: 11px; }
+  .count-badge b { font-size: 13px; }
+  /* v4.9.5：顶栏多了「实时上传进度」一行，变焦按钮继续下移避让（原 56px 会被顶栏压住） */
+  .zoom-ctrl { top: calc(110px + env(safe-area-inset-top)); }
+  .zoom-btn { width: 36px; height: 36px; font-size: 17px; }
+  .float-torch { bottom: calc(var(--bar-h) + 12px); width: 36px; height: 36px; }
+  .scan-tip { font-size: 11px; }
+}
+
+/* ============ 折叠屏展开 / 平板（宽 ≥ 900px） ============ */
+/* 通用放大：文字、芯片、取景提示、变焦、手电筒整体放大，更好点按 */
+@media (min-width: 900px) {
+  .chip { font-size: 16px; padding: 12px 18px; }
+  #btnNewQr { font-size: 17px; min-height: 56px; padding: 14px 22px; }
+  .sw-inline { font-size: 13px; gap: 6px; }
+  .scan-tip { font-size: 17px; }
+  .thumbs-toggle { font-size: 15px; padding: 5px 14px; }
+  .zoom-btn { width: 54px; height: 54px; font-size: 26px; }
+  .float-torch { width: 52px; height: 52px; }
+  .modal-card { max-width: 460px; padding: 26px; }
+  .modal-card h3 { font-size: 20px; }
+  .modal-card .hint { font-size: 15px; }
+}
+/* 大屏 + 竖屏：底部 2 行网格整体放大，同步抬高 --bar-h 防浮层重叠 */
+@media (min-width: 900px) and (orientation: portrait) {
+  :root { --bar-h: 168px; }
+  .capture-bar { gap: 12px; padding: 12px 18px calc(14px + env(safe-area-inset-bottom)); }
+  .bar-btn { padding: 14px 8px; font-size: 14px; }
+  :root { --shoot: clamp(80px, 16vw, 100px); }
+  .count-badge { padding: 6px 16px; font-size: 15px; }
+  .count-badge b { font-size: 19px; }
+}
+/* 大屏 + 横屏：底部单行加大间距与字号 */
+@media (min-width: 900px) and (orientation: landscape) {
+  :root { --bar-h: 118px; }
+  .capture-bar { gap: 16px; padding: 8px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .bar-btn { font-size: 14px; padding: 8px 4px; }
+  :root { --shoot: clamp(64px, 12vw, 84px); }
+  .thumb-strip .thumb { width: 76px; height: 76px; flex: 0 0 76px; }
+}

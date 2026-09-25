@@ -1,0 +1,25 @@
+{
+  "name": "photo-uploader-app",
+  "version": "1.0.0",
+  "description": "照片追溯上传 - 原生壳（Capacitor + 系统相机拍照 + zxing 本地解码），加载 NAS Web 上传页",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync",
+    "add:android": "cap add android",
+    "add:ios": "cap add ios",
+    "build:android": "cap sync android && cd android && ./gradlew assembleDebug",
+    "build:ios": "cap sync ios && cd ios/App && pod install"
+  },
+  "dependencies": {
+    "@capacitor-community/camera-preview": "^8.0.1",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/camera": "^8.0.0",
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/ios": "^8.0.0",
+    "@zxing/library": "^0.21.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}

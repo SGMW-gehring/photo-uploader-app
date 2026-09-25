@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>照片追溯上传</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --txt:#e8ecf3; --sub:#8b93a5; --ok:#22c55e; --bad:#ef4444; --brand:#3b82f6; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--txt);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body { padding: 16px 14px calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 19px; margin: 4px 0 2px; }
+  .sub { color: var(--sub); font-size: 12.5px; margin-bottom: 14px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  label { display:block; font-size: 12.5px; color: var(--sub); margin-bottom: 6px; }
+  input[type=text] { width:100%; padding: 11px 12px; font-size: 15px; color: var(--txt);
+    background:#0c0e13; border:1px solid var(--line); border-radius: 9px; outline:none; }
+  input[type=text]:focus { border-color: var(--brand); }
+  .row { display:flex; gap:8px; margin-top:10px; flex-wrap: wrap; }
+  button { flex:1; min-width: 92px; padding: 11px 10px; font-size: 14px; border-radius: 9px;
+    border:1px solid var(--line); background:#202632; color: var(--txt); }
+  button:active { opacity:.75; }
+  button.primary { background: var(--brand); border-color: var(--brand); font-size: 16px; padding: 14px; font-weight: 600; }
+  button.ghost { background: transparent; }
+  #status { margin-top: 12px; font-size: 13px; line-height: 1.6; color: var(--sub); min-height: 20px; }
+  #status.ok { color: var(--ok); } #status.bad { color: var(--bad); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chip { font-size:12px; padding:6px 10px; border-radius: 999px; background:#0c0e13; border:1px solid var(--line); color:var(--sub); }
+  .chip.on { border-color: var(--brand); color: var(--txt); }
+  /* v4.9.7：右上角「关闭」按钮 —— 此前 App 只能靠系统返回键/最近任务划掉，现场换人、卡住时很不方便 */
+  #btnExit { position:fixed; z-index:20; top:calc(10px + env(safe-area-inset-top)); right:12px;
+    width:34px; height:34px; min-width:0; padding:0; flex:none; line-height:1; font-size:15px;
+    border-radius:50%; background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.28); color:#fff; }
+  #btnExit:active { background:rgba(0,0,0,.6); }
+  /* 识别中遮罩 */
+  #scanui { display:none; position: fixed; inset: 0; z-index: 9; background: rgba(0,0,0,.72);
+    align-items:center; justify-content:center; flex-direction:column; gap:14px; }
+  body.scanning #scanui { display: flex; }
+  #scanui .spin { width:38px; height:38px; border:4px solid rgba(255,255,255,.25);
+    border-top-color:#fff; border-radius:50%; animation: sp 0.9s linear infinite; }
+  #scanui .msg { color:#fff; font-size:15px; text-align:center; padding:0 24px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  /* v35 实时取景扫码层 */
+  #live { display:none; position:fixed; inset:0; z-index:10; background:#000; }
+  body.live #live { display:block; }
+  #live video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .lv-top { position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:10px;
+    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+    background:linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0)); }
+  .lv-top span { flex:1; color:#fff; font-size:14px; text-shadow:0 1px 3px rgba(0,0,0,.8); }
+  .lv-top button { flex:0 0 auto; min-width:0; padding:8px 14px; font-size:13px; border-radius:999px;
+    background:rgba(0,0,0,.45); color:#fff; border:1px solid rgba(255,255,255,.35); }
+  .lv-frame { position:absolute; left:50%; top:44%; transform:translate(-50%,-50%);
+    width:min(78vw, 560px); height:34vw; max-height:220px; pointer-events:none; }
+  .lv-frame i { position:absolute; width:26px; height:26px; border:3px solid #4ade80; opacity:.95; }
+  .lv-frame .tl { left:0; top:0; border-right:none; border-bottom:none; border-radius:6px 0 0 0; }
+  .lv-frame .tr { right:0; top:0; border-left:none; border-bottom:none; border-radius:0 6px 0 0; }
+  .lv-frame .bl { left:0; bottom:0; border-right:none; border-top:none; border-radius:0 0 0 6px; }
+  .lv-frame .br { right:0; bottom:0; border-left:none; border-top:none; border-radius:0 0 6px 0; }
+  .lv-hint { position:absolute; left:0; right:0; top:calc(44% + 18vw + 22px); text-align:center;
+    color:rgba(255,255,255,.85); font-size:12.5px; text-shadow:0 1px 3px rgba(0,0,0,.8); }
+  .lv-bottom { position:absolute; bottom:0; left:0; right:0; display:flex; gap:10px;
+    padding:14px 16px calc(20px + env(safe-area-inset-bottom));
+    background:linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.6)); }
+  .lv-bottom button { flex:1; padding:13px 8px; font-size:14.5px; border-radius:11px;
+    background:rgba(20,24,32,.72); color:#fff; border:1px solid rgba(255,255,255,.3); }
+  .lv-bottom button.on { background:#f59e0b; border-color:#f59e0b; color:#111; }
+</style>
+</head>
+<body>
+
+<button id="btnExit" type="button" aria-label="关闭应用" title="关闭应用">✕</button>
+
+<div id="app">
+  <h1>照片追溯上传</h1>
+  <!-- v4.9.7：原说明行（实时取景连续扫码…无需重新打包）按反馈移除 —— 现场只看地址和扫码按钮，
+       这行技术说明对使用者没有意义，反而把首屏撑高、把「打开相机扫码」挤下去 -->
+
+  <div class="card">
+    <label for="url">NAS 地址（App 直连端口 3080）</label>
+    <input id="url" type="text" inputmode="url" placeholder="http://192.168.31.10:3080" />
+    <div class="row">
+      <button id="btnTest">测试连接</button>
+      <button id="btnSave">保存</button>
+      <button id="btnAuto" class="ghost">自动探测</button>
+      <button id="btnFind" class="ghost">搜索本网段</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="card">
+    <label for="manual">手动填写追溯码（扫码困难时用）</label>
+    <input id="manual" type="text" placeholder="输入追溯码后打开上传页" />
+    <div class="row"><button id="btnManual" class="ghost">用这个码打开上传页</button></div>
+  </div>
+
+  <button id="btnScan" class="primary">📷 打开相机扫码</button>
+  <div id="status"></div>
+</div>
+
+<div id="scanui">
+  <div class="spin"></div>
+  <div class="msg" id="scanmsg">正在识别…</div>
+</div>
+
+<!-- v35 实时取景扫码层：对准条码即自动识别，无需跳系统相机 -->
+<div id="live">
+  <video id="lv" playsinline muted autoplay></video>
+  <div class="lv-top">
+    <span id="lvStatus">正在启动相机…</span>
+    <button id="lvClose">退出</button>
+  </div>
+  <div class="lv-frame"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+  <div class="lv-hint" id="lvHint">把条码对进框内，识别成功会自动进入上传页</div>
+  <div class="lv-bottom">
+    <button id="lvTorch">💡 补光</button>
+    <button id="lvPhoto">📷 拍照识别</button>
+  </div>
+</div>
+
+<!-- zxing 浏览器版（构建时从 @zxing/library 的 UMD 包拷入，注册到全局 ZXing） -->
+<script src="./zxing.min.js"></script>
+
+<script>
+(function () {
+  var KEY_URL = 'nas_url', KEY_LIST = 'nas_list';
+  var DEFAULT_URL = 'http://192.168.31.10:3080';
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---- v4.5 可选增强：启动页「打开相机扫码」优先走原生 ZXing 组件（与上传页同一套桥接，更稳、体验同微信） ----
+  // 桥接由 App 原生层经 addJavascriptInterface 注入为 window.BarcodeScannerNative._scan(cbId)，
+  // 结果经 window.__barcodeResolve(cbId, value) 回传；浏览器/无原生环境下不存在 → hasNativeZXing() 为 false → 自动回退 getUserMedia 实时取景。
+  window.__barcodeCbs = window.__barcodeCbs || {};
+  window.__barcodeResolve = function (cbId, value) {
+    var r = window.__barcodeCbs[cbId];
+    if (r) { delete window.__barcodeCbs[cbId]; r(value || null); }
+  };
+  if (window.BarcodeScannerNative && window.BarcodeScannerNative._scan && !window.BarcodeScannerNative.scan) {
+    window.BarcodeScannerNative.scan = function () {
+      return new Promise(function (resolve) {
+        var id = 'bs_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+        window.__barcodeCbs[id] = resolve;
+        try { window.BarcodeScannerNative._scan(id); } catch (e) { delete window.__barcodeCbs[id]; resolve(null); }
+        // 兜底：原生未回传（异常/用户关闭）则 15s 后自动取消，避免 Promise 永远 pending
+        setTimeout(function () { if (window.__barcodeCbs[id]) { delete window.__barcodeCbs[id]; resolve(null); } }, 15000);
+      });
+    };
+  }
+  function hasNativeZXing() { return !!(window.BarcodeScannerNative && window.BarcodeScannerNative._scan); }
+  function nativeScanZXing() {
+    if (!hasNativeZXing()) return Promise.resolve(null);
+    return window.BarcodeScannerNative.scan().catch(function () { return null; });
+  }
+
+  var statusEl = $('status');
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg || '';
+    statusEl.className = kind || '';
+  }
+  function normalize(u) {
+    u = (u || '').trim();
+    if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+    return u.replace(/\/+$/, '');
+  }
+  function getUrl() {
+    return normalize(localStorage.getItem(KEY_URL) || '') || DEFAULT_URL;
+  }
+  // v4.2.2：地址以「输入框当前值」为准（所见即所得）。
+  // 视频实测坑：用户改了输入框但没点「保存」，openUpload 读 localStorage 旧值（曾被误存的
+  // 路由器地址 192.168.3.1）→ 跳上传页 CONNECTION_REFUSED、服务端兜底全发错地址。
+  function resolveBase() {
+    var u = normalize($('url').value);
+    if (u) { localStorage.setItem(KEY_URL, u); remember(u); return u; }
+    return getUrl();
+  }
+  function getList() {
+    try {
+      var a = JSON.parse(localStorage.getItem(KEY_LIST) || '[]');
+      return Array.isArray(a) ? a : [];
+    } catch (e) { return []; }
+  }
+  function remember(u) {
+    u = normalize(u);
+    if (!u) return;
+    var list = getList().filter(function (x) { return x !== u; });
+    list.unshift(u);
+    localStorage.setItem(KEY_LIST, JSON.stringify(list.slice(0, 8)));
+    renderChips();
+  }
+  function renderChips() {
+    var box = $('chips');
+    var cur = normalize($('url').value);
+    box.innerHTML = '';
+    getList().forEach(function (u) {
+      var b = document.createElement('div');
+      b.className = 'chip' + (u === cur ? ' on' : '');
+      b.textContent = u.replace(/^https?:\/\//, '');
+      b.onclick = function () { $('url').value = u; renderChips(); };
+      box.appendChild(b);
+    });
+  }
+
+  // 探测可达性 v4.2.1：请求 /api/health 并验证 JSON（服务端已开 CORS）。
+  // v4.2 的 no-cors 探测有严重误判：任何在 3080 端口接受 TCP 的设备（如路由器网关）
+  // 都会被当成 NAS，导致「搜索本网段」把 192.168.x.1 存成服务器地址 → 上传页 CONNECTION_REFUSED。
+  function probe(url, timeout) {
+    return new Promise(function (resolve) {
+      var done = false;
+      var timer = setTimeout(function () { if (!done) { done = true; resolve(false); } }, timeout || 2200);
+      fetch(url + '/api/health?t=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!done) { done = true; clearTimeout(timer); resolve(!!(j && j.ok === true)); }
+        })
+        .catch(function () { if (!done) { done = true; clearTimeout(timer); resolve(false); } });
+    });
+  }
+
+  function openUpload(code) {
+    var base = resolveBase();
+    setStatus('正在打开 ' + base + ' …');
+    window.location.href = base + '/?shell=1' + (code ? '&code=' + encodeURIComponent(code) : '');
+  }
+
+  // ---------- 扫码：系统相机拍照 → zxing 本地静态解码（不依赖 GMS / CameraX 预览） ----------
+  function getCamera() {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Camera) {
+      return window.Capacitor.Plugins.Camera;
+    }
+    return null;
+  }
+
+  function setScanMsg(t) {
+    var el = $('scanmsg');
+    if (el) el.textContent = t || '正在识别…';
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    var arr = dataUrl.split(',');
+    var mime = (/:(.*?);/.exec(arr[0]) || [])[1] || 'image/jpeg';
+    var bstr = atob(arr[1]);
+    var u8 = new Uint8Array(bstr.length);
+    for (var i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
+    return new Blob([u8], { type: mime });
+  }
+
+  // 服务端重型解码兜底：POST /api/decode（multipart 字段 image）
+  // NAS 端为 zxing-cpp + 对比度拉伸 + 条码区域定位 + 多尺度放大，擅长细条纹一维码/低对比度场景
+  // 注意：网络失败与「没解出」都返回 null，靠 serverDecode.lastError 区分（供实时取景显式提示）
+  async function serverDecode(dataUrl) {
+    serverDecode.lastError = null;
+    var blob = dataUrlToBlob(dataUrl);
+    var fd = new FormData();
+    fd.append('image', blob, 'scan.jpg');
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 30000) : null;
+    try {
+      var resp = await fetch(getUrl() + '/api/decode', { method: 'POST', body: fd, signal: ctrl ? ctrl.signal : undefined });
+      var j = await resp.json();
+      return (j && j.ok && j.text) ? j.text : null;
+    } catch (e) {
+      serverDecode.lastError = (e && (e.message || e.name)) || 'network';
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  // ---------- v35 实时取景扫码：连续取帧 → Worker 后台解码（主线程不卡顿） ----------
+  // 旧流程（点按钮→跳系统相机→拍一张→主线程解全分辨率原图）有两大痛点：
+  // ① 没有实时画面，用户不知道对没对准；② 主线程解 1200 万像素原图，页面一冻好几秒（卡顿主因）。
+  // 新流程：getUserMedia 实时取景 → 每 300ms 抓中部横带帧 → Blob Worker 内多角度 zxing 解码
+  // → 连续失败自动发 NAS 服务端引擎兜底 → 命中即震动并跳上传页。
+  var lvStream = null, lvTimer = null, lvBusy = false, lvFails = 0, lvSrvBusy = false, lvTorchOn = false;
+
+  function zxWorkerUrl() {
+    try { return new URL('./zxing.min.js', location.href).href; } catch (e) { return './zxing.min.js'; }
+  }
+
+  // Blob Worker：importScripts zxing → RGBLuminanceSource + MultiFormatReader 多角度解码。
+  // 就算 Worker/库加载失败（READER=null）也不致死：每 6 帧的服务端兜底仍能识别。
+  function ensureLvWorker() {
+    if (ensureLvWorker.w !== undefined) return ensureLvWorker.w;
+    try {
+      var src = [
+        'var ZXURL=' + JSON.stringify(zxWorkerUrl()) + ';',
+        'try{importScripts(ZXURL);}catch(e){}',
+        'var READER=null;',
+        'try{READER=new ZXing.MultiFormatReader();var H=new Map();',
+        ' H.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.CODE_39,ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.ITF,ZXing.BarcodeFormat.UPC_A,ZXing.BarcodeFormat.UPC_E,ZXing.BarcodeFormat.CODABAR,ZXing.BarcodeFormat.QR_CODE,ZXing.BarcodeFormat.DATA_MATRIX,ZXing.BarcodeFormat.AZTEC,ZXing.BarcodeFormat.PDF_417]);',
+        ' H.set(ZXing.DecodeHintType.TRY_HARDER,true);',
+        ' if(ZXing.DecodeHintType.ALSO_INVERTED!==undefined)H.set(ZXing.DecodeHintType.ALSO_INVERTED,true);',
+        ' READER.setHints(H);}catch(e){READER=null;}',
+        // ⚠️ 关键：RGBLuminanceSource 不会自动把 RGBA 转灰度（实测传 RGBA 缓冲会取前 w*h 字节导致图像错乱），
+        // 必须自己按 ITU-R 601 权重转灰度（与 NAS 端 decode-worker.js 同款公式）
+        'function toGray(src,n){var o=new Uint8ClampedArray(n);for(var i=0,p=0;i<n;i++,p+=4){o[i]=(src[p]*306+src[p+1]*601+src[p+2]*117)>>10;}return o;}',
+        // 灰度图旋转（每像素 1 字节），覆盖手机横拍/倒拍
+        'function rot(g,w,h,deg){',
+        ' if(!deg)return{d:g,w:w,h:h};',
+        ' var out=new Uint8ClampedArray(g.length),y,x;',
+        ' if(deg===180){for(y=0;y<h;y++)for(x=0;x<w;x++)out[(h-1-y)*w+(w-1-x)]=g[y*w+x];return{d:out,w:w,h:h};}',
+        ' if(deg===90){var nw=h;for(y=0;y<h;y++)for(x=0;x<w;x++)out[x*nw+(h-1-y)]=g[y*w+x];return{d:out,w:nw,h:w};}',
+        ' if(deg===270){var nw2=h;for(y=0;y<h;y++)for(x=0;x<w;x++)out[(w-1-x)*nw2+y]=g[y*w+x];return{d:out,w:nw2,h:w};}',
+        ' return{d:g,w:w,h:h};}',
+        // 以下三件套移植自 NAS 端 decode-worker.js（v26 实战验证）
+        'function makeBmp(l,w,h){return new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.RGBLuminanceSource(l,w,h)));}',
+        'function tryBmp(b){try{var r=READER.decode(b);var t=r&&r.getText&&r.getText();return t?t.trim():null;}catch(e){return null;}}',
+        'function stretchLum(lum){var o=lum.slice(),mn=255,mx=0,k,v;for(k=0;k<o.length;k++){v=o[k];if(v<mn)mn=v;if(v>mx)mx=v;}if(mx-mn>1&&mx-mn<200){var g=255/(mx-mn);for(k=0;k<o.length;k++)o[k]=(o[k]-mn)*g;}return o;}',
+        'function rowEdges(lum,w,h){var e=new Int32Array(h),y,x,prev,cnt,g;for(y=0;y<h;y++){prev=lum[y*w];cnt=0;for(x=1;x<w;x++){g=lum[y*w+x];if(Math.abs(g-prev)>20)cnt++;prev=g;}e[y]=cnt;}return e;}',
+        'function avgRows(lum,w,y0,y1){var o=new Uint8Array(w),x,y,s,n=Math.max(1,y1-y0);for(x=0;x<w;x++){s=0;for(y=y0;y<y1;y++)s+=lum[y*w+x];o[x]=s/n;}return o;}',
+        // 行合成扫描：把条码区域多行像素平均成 1~4 条合成扫描线（等效扫码枪多扫描线），专治反光/模糊/阴影
+        'function rowSynthScan(lum,w,h){',
+        ' if(h<2||w<8)return null;',
+        ' var e=rowEdges(lum,w,h),mx=0,y;for(y=0;y<h;y++)mx=Math.max(mx,e[y]);',
+        ' if(mx<8)return null;',
+        ' var thr=Math.max(6,mx*0.25),good=[],i;',
+        ' for(y=0;y<h;y++)if(e[y]>=thr)good.push(y);',
+        ' if(good.length<2)return null;',
+        ' var yTop=good[0],yBot=good[good.length-1]+1,candidates=[[yTop,yBot]],parts,step,j;',
+        ' for(parts=2;parts<=4;parts++){step=(yBot-yTop)/parts;for(i=0;i<parts;i++){var a=yTop+Math.floor(i*step),b=yTop+Math.floor((i+1)*step);if(b-a>=1)candidates.push([a,b]);}}',
+        ' var win=Math.max(1,Math.floor((yBot-yTop)/8)),c=0;',
+        ' for(var y0=yTop;y0+win<=yBot&&c<6;y0+=Math.max(1,win>>1),c++)candidates.push([y0,y0+win]);',
+        ' for(i=0;i<candidates.length;i++){var row=avgRows(lum,w,candidates[i][0],candidates[i][1]);',
+        '  var t=tryBmp(makeBmp(row,w,1));',
+        '  if(!t)t=tryBmp(makeBmp(stretchLum(row),w,1));',
+        '  if(t)return t;}',
+        ' return null;}',
+        'onmessage=function(ev){',
+        ' var m=ev.data,res=null;',
+        ' if(READER){',
+        '  var lum=toGray(new Uint8ClampedArray(m.data),m.width*m.height);',
+        '  var i,r;',
+        // ① 四方向直接解
+        '  for(i=0;i<m.angles.length&&!res;i++){r=rot(lum,m.width,m.height,m.angles[i]);res=tryBmp(makeBmp(r.d,r.w,r.h));}',
+        // ② 灰度拉伸后四方向再解（低对比/浅印）
+        '  if(!res){var st=stretchLum(lum);for(i=0;i<m.angles.length&&!res;i++){r=rot(st,m.width,m.height,m.angles[i]);res=tryBmp(makeBmp(r.d,r.w,r.h));}}',
+        // ③ 行合成扫描（原图+拉伸图 × 四方向），专治反光/模糊/高密度
+        '  if(!res){for(var s=0;s<2&&!res;s++){var src=s?stretchLum(lum):lum;for(var k=0;k<m.angles.length&&!res;k++){r=rot(src,m.width,m.height,m.angles[k]);res=rowSynthScan(r.d,r.w,r.h);}}}',
+        ' }',
+        ' postMessage({id:m.id,text:res});',
+        '};'
+      ].join('\n');
+      var blob = new Blob([src], { type: 'text/javascript' });
+      ensureLvWorker.w = new Worker(URL.createObjectURL(blob));
+      ensureLvWorker.seq = 0;
+      ensureLvWorker.pending = new Map();
+      ensureLvWorker.w.onmessage = function (ev) {
+        var p = ensureLvWorker.pending.get(ev.data.id);
+        if (p) { ensureLvWorker.pending.delete(ev.data.id); p(ev.data.text); }
+      };
+      ensureLvWorker.w.onerror = function () { ensureLvWorker.w = null; };
+      return ensureLvWorker.w;
+    } catch (e) { ensureLvWorker.w = null; return null; }
+  }
+
+  function workerDecodeRgba(data, w, h, angles) {
+    var wk = ensureLvWorker();
+    if (!wk) return Promise.resolve(null);
+    var id = ++ensureLvWorker.seq;
+    return new Promise(function (resolve) {
+      ensureLvWorker.pending.set(id, resolve);
+      try {
+        wk.postMessage({ id: id, data: data.buffer, width: w, height: h, angles: angles }, [data.buffer]);
+      } catch (e) { ensureLvWorker.pending.delete(id); resolve(null); }
+    });
+  }
+
+  // 抓当前画面（默认中部横带，条码常在视野中部；fullFrame=true 抓全画面兜条码贴边），
+  // 限制最大边长控制解码耗时
+  function lvGrab(maxEdge, fullFrame) {
+    var v = $('lv');
+    var vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh) return null;
+    var sy = fullFrame ? 0 : Math.round(vh * 0.18), sh = fullFrame ? vh : Math.round(vh * 0.64);
+    var scale = Math.min(1, maxEdge / Math.max(vw, sh));
+    var cw = Math.max(1, Math.round(vw * scale)), ch = Math.max(1, Math.round(sh * scale));
+    var cv = document.createElement('canvas');
+    cv.width = cw; cv.height = ch;
+    cv.getContext('2d', { willReadFrequently: true }).drawImage(v, 0, sy, vw, sh, 0, 0, cw, ch);
+    return cv;
+  }
+
+  function lvSetStatus(t) { $('lvStatus').textContent = t || ''; }
+
+  function lvHit(code) {
+    try { navigator.vibrate && navigator.vibrate(80); } catch (e) {}
+    stopLive();
+    openUpload(code);
+  }
+
+  function lvLoop() {
+    if (!lvStream || lvBusy) return;
+    var full = (lvFails % 3 === 2); // 每 3 帧插一帧全画面，防条码贴边漏识
+    var cv = lvGrab(full ? 2000 : 1600, full);
+    if (!cv) return;
+    var ctx = cv.getContext('2d', { willReadFrequently: true });
+    var id = ctx.getImageData(0, 0, cv.width, cv.height);
+    lvBusy = true;
+    workerDecodeRgba(id.data, cv.width, cv.height, [0, 90, 180, 270]).then(function (text) {
+      lvBusy = false;
+      if (text && text.trim()) { lvHit(text.trim()); return; }
+      lvFails++;
+      // 本地连续 3 帧未中 → 静默发给 NAS 服务端重型引擎兜底（快帧约 1 秒即触发，慢帧约 6 秒）
+      if (lvFails % 3 === 0 && !lvSrvBusy) {
+        lvSrvBusy = true;
+        // v4.2.2→v4.4：兜底帧抓「全画面较高分辨率」（≤1920px）。服务端已加 12s 硬截止与候选压缩，
+        // 此前 2560px 大图 + 候选过多会触发 45s 级慢解；1900 级已足够 NAS 引擎吃清密集条码。
+        var big = lvGrab(1920, true);
+        var dataUrl = null;
+        try { if (big) dataUrl = big.toDataURL('image/jpeg', 0.85); } catch (e) {}
+        if (dataUrl) {
+          serverDecode(dataUrl).then(function (t2) {
+            lvSrvBusy = false;
+            if (t2 && lvStream) { lvHit(String(t2).trim()); return; }
+            if (!t2 && serverDecode.lastError) lvSrvFail(); // 网络层失败（地址错/连不上）才告警
+          }).catch(function () { lvSrvFail(); });
+        } else { lvSrvBusy = false; }
+      }
+      if (lvFails === 10) lvSetStatus('还在识别… 已分析 ' + lvFails + ' 帧，离近一点或开补光');
+      if (lvFails === 25) lvSetStatus('还没认出：离条码近一点、对准框内，或开补光');
+    });
+  }
+
+  // 服务端兜底连续失败 → 大概率首页 NAS 地址不对（v4.2 曾被网关地址坑过），显式提醒而不是静默
+  var lvSrvErr = 0;
+  function lvSrvFail() {
+    lvSrvBusy = false;
+    lvSrvErr++;
+    if (lvSrvErr === 2) lvSetStatus('⚠️ 服务端兜底连不上：回首页核对 NAS 地址（不是路由器地址）', 'bad');
+  }
+
+  async function startLive() {
+    var base = resolveBase();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+      setStatus('此环境不支持实时取景，改用拍照识别', '');
+      startScan();
+      return;
+    }
+    var tries = [
+      { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } },
+      { audio: false, video: { facingMode: 'environment' } },
+      { audio: false, video: true }
+    ];
+    var stream = null, lastErr = null;
+    for (var i = 0; i < tries.length && !stream; i++) {
+      try { stream = await navigator.mediaDevices.getUserMedia(tries[i]); }
+      catch (e) { lastErr = e; if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) break; }
+    }
+    if (!stream) {
+      var m = (lastErr && (lastErr.message || lastErr.name)) || '未知错误';
+      setStatus('实时相机不可用（' + m + '），改用拍照识别', 'bad');
+      startScan();
+      return;
+    }
+    lvStream = stream; lvFails = 0; lvBusy = false; lvTorchOn = false; lvSrvErr = 0;
+    var v = $('lv');
+    v.srcObject = stream;
+    try { await v.play(); } catch (e) {}
+    try {
+      var tr = stream.getVideoTracks()[0];
+      await tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    } catch (e) {}
+    document.body.classList.add('live');
+    lvSetStatus('对准条码，自动识别中…');
+    lvTimer = setInterval(lvLoop, 300);
+  }
+
+  function stopLive() {
+    if (lvTimer) { clearInterval(lvTimer); lvTimer = null; }
+    if (lvStream) { lvStream.getTracks().forEach(function (t) { t.stop(); }); lvStream = null; }
+    var v = $('lv');
+    if (v) v.srcObject = null;
+    document.body.classList.remove('live');
+  }
+
+  async function toggleTorch() {
+    if (!lvStream) return;
+    var t = lvStream.getVideoTracks()[0];
+    var caps = t.getCapabilities ? t.getCapabilities() : {};
+    if (!caps.torch) { setStatus('该设备不支持补光', 'bad'); return; }
+    lvTorchOn = !lvTorchOn;
+    try { await t.applyConstraints({ advanced: [{ torch: lvTorchOn }] }); $('lvTorch').classList.toggle('on', lvTorchOn); }
+    catch (e) { lvTorchOn = !lvTorchOn; setStatus('补光不可用', 'bad'); }
+  }
+
+  async function startScan() {
+    var base = resolveBase();
+
+    var Camera = getCamera();
+    if (!Camera) {
+      setStatus('未检测到相机组件，请确认安装的是最新版 App（或先用「手动填写追溯码」）', 'bad');
+      return;
+    }
+
+    // 1) 调系统相机拍照（所有安卓机通用，绕开 ML Kit 的 gms 依赖与 CameraX 兼容问题）
+    var photo;
+    try {
+      photo = await Camera.getPhoto({
+        quality: 80,
+        allowEditing: false,
+        resultType: 'dataUrl',
+        correctOrientation: true,
+        saveToGallery: false
+      });
+    } catch (e) {
+      // 用户取消拍照也算正常退出
+      var m = (e && (e.message || e.toString())) || '';
+      if (/cancel|denied|abort/i.test(m)) { setStatus('已取消拍照'); return; }
+      setStatus('未能启动相机：' + m + '（可先用「手动填写追溯码」）', 'bad');
+      return;
+    }
+
+    if (!photo || !photo.dataUrl) {
+      setStatus('没有拿到照片，请重试（或「手动填写追溯码」）', 'bad');
+      return;
+    }
+
+    // 2) 本地解码
+    document.body.classList.add('scanning');
+    try {
+      if (typeof ZXing === 'undefined' || !ZXing.BrowserMultiFormatReader) {
+        throw new Error('解码库未加载');
+      }
+      var img = new Image();
+      img.src = photo.dataUrl;
+      await img.decode();
+
+      // 下采样提速：zxing 对大图解码偏慢
+      var max = 1600;
+      var scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      var cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      cv.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+
+      var reader = new ZXing.BrowserMultiFormatReader();
+      var result = null;
+      try {
+        // 第一刷：缩略图快解
+        result = await reader.decodeFromCanvas(cv);
+      } catch (e1) {
+        try {
+          // 第二刷（v35 修正）：旧版 decodeFromImage(img) 直接解全分辨率原图，1200 万像素
+          // 在主线程要冻住数秒——这就是「卡顿」的主因。改用 ≤2400px 画布，命中率相当，耗时小一个量级。
+          var hints = new Map();
+          hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+          var max2 = 2400;
+          var s2 = Math.min(1, max2 / Math.max(img.naturalWidth, img.naturalHeight));
+          var cv2 = document.createElement('canvas');
+          cv2.width = Math.max(1, Math.round(img.naturalWidth * s2));
+          cv2.height = Math.max(1, Math.round(img.naturalHeight * s2));
+          cv2.getContext('2d').drawImage(img, 0, 0, cv2.width, cv2.height);
+          result = await reader.decodeFromCanvas(cv2);
+        } catch (e2) { /* 两刷都失败 → 判为未识别 */ }
+      }
+      var code = result && (result.getText ? result.getText() : result.text);
+
+      // 3) 本地两刷都没认出 → NAS 服务端重型解码兜底（对比度拉伸+条码定位+多尺度，擅长细条纹一维码）
+      if (!code) {
+        setScanMsg('本地没认出，改用 NAS 服务端识别…');
+        code = await serverDecode(photo.dataUrl);
+        // v4.2.2：网络失败≠没解出。地址错（如误存路由器地址）时明确指路，不再误报「双引擎未识别」
+        if (!code && serverDecode.lastError) {
+          throw new Error('NAS 服务端连不上（' + serverDecode.lastError + '）：回首页核对 NAS 地址并点「保存」');
+        }
+      }
+      if (!code) throw new Error('本地与 NAS 两种引擎均未识别到条码');
+      document.body.classList.remove('scanning');
+      setStatus('识别成功：' + code, 'ok');
+      openUpload(code);
+    } catch (e) {
+      document.body.classList.remove('scanning');
+      var d = (e && (e.message || e.toString())) || String(e);
+      setStatus('没认出条码，请对准后重拍（或「手动填写追溯码」）：' + d, 'bad');
+    }
+  }
+
+  // ---------- 地址探测 ----------
+  async function autoDetect() {
+    var cands = [normalize($('url').value)].concat(getList(), [DEFAULT_URL]);
+    var seen = {}, uniq = [];
+    cands.forEach(function (u) { u = normalize(u); if (u && !seen[u]) { seen[u] = 1; uniq.push(u); } });
+    for (var i = 0; i < uniq.length; i++) {
+      setStatus('探测中：' + uniq[i] + '（' + (i + 1) + '/' + uniq.length + '）');
+      if (await probe(uniq[i], 2500)) {
+        $('url').value = uniq[i];
+        localStorage.setItem(KEY_URL, uniq[i]);
+        remember(uniq[i]);
+        renderChips();
+        setStatus('已连接：' + uniq[i], 'ok');
+        return uniq[i];
+      }
+    }
+    setStatus('没探测到可用地址，请手动填写或点“搜索本网段”', 'bad');
+    return null;
+  }
+
+  function localIp() {
+    return new Promise(function (resolve) {
+      try {
+        var pc = new RTCPeerConnection({ iceServers: [] });
+        pc.createDataChannel('');
+        pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).catch(function () {});
+        pc.onicecandidate = function (e) {
+          if (e && e.candidate && e.candidate.candidate) {
+            var m = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/.exec(e.candidate.candidate);
+            if (m && m[1] !== '127') { try { pc.close(); } catch (x) {} resolve(m[0]); }
+          }
+        };
+        setTimeout(function () { try { pc.close(); } catch (x) {} resolve(null); }, 3000);
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  async function findInSubnet() {
+    var ip = await localIp();
+    if (!ip) {
+      setStatus('取不到本机网段，请手动填写 NAS 地址', 'bad');
+      return null;
+    }
+    var prefix = ip.split('.').slice(0, 3).join('.');
+    setStatus('本机 ' + ip + '，正在扫描 ' + prefix + '.1 ~ .254 …');
+    var found = null;
+    for (var i = 1; i <= 254 && !found; i += 32) {
+      var batch = [];
+      for (var j = i; j < Math.min(i + 32, 255); j++) {
+        if (j === 1 || j >= 254) continue; // 跳过网关 .1 与 .254/.255（v4.2 曾把网关误存为 NAS 地址）
+        batch.push(prefix + '.' + j);
+      }
+      await Promise.all(batch.map(function (host) {
+        return probe('http://' + host + ':3080', 1800).then(function (ok) {
+          if (ok && !found) {
+            found = 'http://' + host + ':3080';
+            $('url').value = found;
+            localStorage.setItem(KEY_URL, found);
+            remember(found);
+            renderChips();
+            setStatus('找到服务：' + found, 'ok');
+          }
+        });
+      }));
+      if (!found) setStatus('扫描中…已试到 ' + prefix + '.' + Math.min(i + 31, 254));
+    }
+    if (!found) setStatus('本网段没找到服务（NAS 可能在另一网段，或 3080 未开启直连）', 'bad');
+    return found;
+  }
+
+  // ---------- 事件绑定 ----------
+  $('url').value = getUrl();
+  renderChips();
+
+  $('btnSave').onclick = function () {
+    var u = normalize($('url').value);
+    if (!u) { setStatus('地址不能为空', 'bad'); return; }
+    localStorage.setItem(KEY_URL, u);
+    remember(u);
+    setStatus('已保存：' + u, 'ok');
+  };
+  $('btnTest').onclick = async function () {
+    var u = normalize($('url').value);
+    setStatus('测试 ' + u + ' …');
+    var ok = await probe(u, 3000);
+    setStatus(ok ? '连接正常：' + u : '连不上 ' + u + '（确认与 NAS 同一 WiFi、3080 已开启直连）', ok ? 'ok' : 'bad');
+  };
+  $('btnAuto').onclick = function () { autoDetect(); };
+  $('btnFind').onclick = function () { findInSubnet(); };
+  // v4.5 可选增强：优先原生全屏扫码（更稳、体验同微信）；无原生桥接（如浏览器）则回退实时取景扫码
+  $('btnScan').onclick = function () {
+    if (hasNativeZXing()) {
+      setStatus('调用原生扫码…');
+      nativeScanZXing().then(function (code) {
+        if (code) { openUpload(code); }
+        else { setStatus('未识别到条码，可点「手动填写追溯码」', ''); }
+      });
+    } else {
+      startLive();
+    }
+  };
+  $('lvClose').onclick = function () { stopLive(); setStatus('已退出扫码'); };
+  // v4.9.7：关闭按钮 —— 优先走原生桥（真正退出进程）；旧包/浏览器里没有桥则降级 window.close()，
+  // 仍关不掉时明确告诉用户用系统返回键，避免出现「点了没反应」
+  $('btnExit').onclick = function () {
+    try {
+      if (window.AppControlNative && window.AppControlNative._exit) {
+        window.AppControlNative._exit();
+        return;
+      }
+    } catch (e) {}
+    try { window.close(); } catch (e) {}
+    setStatus('如未退出，请用系统返回键或从最近任务划掉（旧版 App 无退出接口）', '');
+  };
+  $('lvPhoto').onclick = function () { stopLive(); startScan(); }; // 实时识别不动时改拍一张
+  $('lvTorch').onclick = function () { toggleTorch(); };
+  window.addEventListener('pagehide', stopLive);
+  $('btnManual').onclick = function () {
+    var c = ($('manual').value || '').trim();
+    if (!c) { setStatus('请先输入追溯码', 'bad'); return; }
+    openUpload(c);
+  };
+
+  // 首次进入自动检测一次
+  (async function () {
+    var u = getUrl();
+    setStatus('正在检测 ' + u + ' …');
+    var ok = await probe(u, 2500);
+    setStatus(ok ? '已连接：' + u + '，点下方按钮开始扫码' : '当前地址不通，请点“自动探测”或“搜索本网段”', ok ? 'ok' : 'bad');
+  })();
+
+  // v4.8：启动页底部版本标识——装机后在「打开相机扫码」前一眼确认装的是哪个包，
+// 与 NAS 上传页顶栏的版本号对得上才算两端同步（避免只更新一端导致的现象对不上）。
+// v4.9.5：改为「App vX · NAS vX」双端对照 —— NAS 版本从 /api/health 实时取，
+// 即使 APK 没重打也能立刻看出「服务端已升级、App 壳还是旧的」，不再靠猜。
+(function () {
+  var APP_VER = '4.9.7'; // 与 NAS/public/index.html 的 ver-tag、server.js 的 APP_VERSION 保持一致
+  var t = document.createElement('div');
+  t.textContent = 'App v' + APP_VER + ' · NAS 检测中…';
+  t.style.cssText = 'position:fixed;left:0;right:0;bottom:6px;text-align:center;color:#8b93a5;font-size:11px;opacity:.75;pointer-events:none;z-index:9;';
+  document.body.appendChild(t);
+  try {
+    var base = getUrl();
+    if (!base) return;
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; t.textContent = 'App v' + APP_VER + ' · NAS 未连接'; } }, 3000);
+    fetch(base + '/api/health?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (done) return; done = true; clearTimeout(timer);
+        var nv = (j && j.version) ? String(j.version) : '未知';
+        var same = nv === APP_VER;
+        t.textContent = 'App v' + APP_VER + ' · NAS v' + nv + (same ? '' : '（版本不一致，请更新对应一端）');
+        t.style.color = same ? '#8b93a5' : '#ffb020';
+      })
+      .catch(function () { if (!done) { done = true; clearTimeout(timer); t.textContent = 'App v' + APP_VER + ' · NAS 未连接'; } });
+  } catch (e) { /* 拿不到地址就只显示 App 版本 */ }
+  })();
+})();
+</script>
+</body>
+</html>
