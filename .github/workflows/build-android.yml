@@ -1,0 +1,212 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install deps
+        # --legacy-peer-deps：@capacitor-community/camera-preview 的 peer(@capacitor/core>=8.0.2)
+        # 与部分依赖解析严格模式可能冲突，CI 直接 ERESOLVE 失败；放宽后由 cap sync 保证原生一致
+        run: npm install --legacy-peer-deps
+
+      # Capacitor 8 的安卓模块要求 Java 21（runner 默认 17，会报 invalid source release: 21）
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # 拷贝 zxing 浏览器版（UMD，全局 ZXing）进 www：启动页拍照后用它本地静态解码，不依赖 GMS
+      - name: 拷贝 zxing 解码库
+        run: |
+          cp node_modules/@zxing/library/umd/index.min.js www/zxing.min.js 2>/dev/null \
+          || cp node_modules/@zxing/library/bundles/zxing.min.js www/zxing.min.js 2>/dev/null \
+          || cp node_modules/@zxing/library/build/umd/index.min.js www/zxing.min.js
+          ls -l www/zxing.min.js
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      # 拷贝原生扫码 Java 源（CameraX + ZXing，不依赖 GMS）到生成的 android 工程对应包目录
+      - name: 拷贝原生扫码 Java 源
+        run: |
+          DST=android/app/src/main/java/com/fnnas/photouploader
+          mkdir -p "$DST"
+          cp native/BarcodeScannerBridge.java "$DST/"
+          cp native/BarcodeScannerActivity.java "$DST/"
+          # v4.8：原生拍照页（连拍、无系统相机「确定」步骤）
+          cp native/PhotoShootBridge.java "$DST/"
+          cp native/PhotoShootActivity.java "$DST/"
+          # v4.9.7：App 控制桥（启动页「关闭」按钮真正退出 App）
+          cp native/AppControlBridge.java "$DST/"
+          ls -l "$DST"
+
+      - name: Sync native
+        run: npx cap sync android
+
+      # 原生扫码注入（必须在 cap sync 之后，避免被同步覆盖）：
+      # ① MainActivity 注入 onStart：保留下载监听 + 新增 BarcodeScannerNative 桥接
+      # ② build.gradle 增加 CameraX + ZXing 依赖
+      # ③ AndroidManifest 注册 BarcodeScannerActivity
+      # ④ 兜底确保相机权限
+      - name: 注入原生扫码组件
+        run: |
+          python3 - <<'PYEOF'
+          import glob, re
+
+          # ① MainActivity：合并注入「下载监听 + 原生扫码桥接」（仅一次）
+          fps = glob.glob('android/app/src/main/java/**/MainActivity.java', recursive=True)
+          if not fps:
+              raise SystemExit('!! 未找到 MainActivity.java')
+          p = fps[0]
+          s = open(p, encoding='utf-8').read()
+          if 'BarcodeScannerBridge.bind' not in s:
+              marker = 'public class MainActivity extends BridgeActivity {'
+              if marker not in s:
+                  raise SystemExit('!! MainActivity 结构不匹配，跳过注入')
+              inject = '''
+            private boolean dlReady = false;
+            private boolean scanReady = false;
+            @Override
+            public void onStart() {
+              super.onStart();
+              if (!dlReady && this.bridge != null && this.bridge.getWebView() != null) {
+                dlReady = true;
+                this.bridge.getWebView().setDownloadListener(new android.webkit.DownloadListener() {
+                  public void onDownloadStart(String url, String ua, String cd, String mt, long len) {
+                    android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                    if (dm == null) return;
+                    android.net.Uri uri = android.net.Uri.parse(url);
+                    android.app.DownloadManager.Request r = new android.app.DownloadManager.Request(uri);
+                    r.addRequestHeader("User-Agent", ua);
+                    if (mt != null) r.setMimeType(mt);
+                    r.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    r.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, android.webkit.URLUtil.guessFileName(url, cd, mt));
+                    dm.enqueue(r);
+                  }
+                });
+              }
+              // 原生 ZXing 扫码桥接（不依赖 GMS）：把 BarcodeScannerNative 暴露给 WebView，
+              // JS 调 window.BarcodeScannerNative.scan() 即调起全屏原生扫码（识别后回填追溯码，体验同微信）
+              if (!scanReady && this.bridge != null && this.bridge.getWebView() != null) {
+                scanReady = true;
+                BarcodeScannerBridge.bind(this);
+                this.bridge.getWebView().addJavascriptInterface(new BarcodeScannerBridge(), "BarcodeScannerNative");
+                // 原生拍照桥接（v4.8）：JS 调 window.PhotoShootNative._shoot() 拉起全屏拍照页，
+                // 拍完直接回传图片给页面，不再经过系统相机的「确定」步骤
+                PhotoShootBridge.bind(this);
+                this.bridge.getWebView().addJavascriptInterface(new PhotoShootBridge(), "PhotoShootNative");
+                // v4.9.7：App 控制桥接 —— 启动页「关闭」按钮调 window.AppControlNative._exit() 真正退出
+                AppControlBridge.bind(this);
+                this.bridge.getWebView().addJavascriptInterface(new AppControlBridge(), "AppControlNative");
+              }
+            }
+          '''
+              s = s.replace(marker, marker + '\n' + inject, 1)
+              open(p, 'w', encoding='utf-8').write(s)
+              print("MainActivity 注入完成（下载监听 + 原生扫码桥接）")
+          else:
+              print("MainActivity 已注入，跳过")
+
+          # ② Gradle 依赖
+          g = 'android/app/build.gradle'
+          gs = open(g, encoding='utf-8').read()
+          if 'androidx.camera:camera-core' not in gs:
+              gs = gs.replace('dependencies {', '''dependencies {
+              // 原生 ZXing 扫码（v4.5）：CameraX 取帧 + ZXing 解码，不依赖 GMS
+              implementation 'androidx.camera:camera-core:1.3.4'
+              implementation 'androidx.camera:camera-camera2:1.3.4'
+              implementation 'androidx.camera:camera-lifecycle:1.3.4'
+              implementation 'androidx.camera:camera-view:1.3.4'
+              implementation 'com.google.zxing:core:3.5.3'
+          ''', 1)
+              open(g, 'w', encoding='utf-8').write(gs)
+              print("Gradle 依赖已添加（CameraX + ZXing）")
+          else:
+              print("Gradle 依赖已存在，跳过")
+
+          # ③ Manifest 注册扫码 Activity
+          m = 'android/app/src/main/AndroidManifest.xml'
+          ms = open(m, encoding='utf-8').read()
+
+          # ③-a v4.9.7：申请更大的堆（老机型荣耀 Play 在「原图解码 + 旋转 + JPEG 压缩」这一步
+          # 峰值内存超过默认堆上限会被系统直接杀掉，表现为点快门闪退）。
+          # 为专用作业 App 多要点内存是可接受的，配合拍照页 1600×1200（低内存机 1280×960）出图。
+          if 'android:largeHeap' not in ms:
+              ms = re.sub(r'<application\b', '<application android:largeHeap="true"', ms, count=1)
+              open(m, 'w', encoding='utf-8').write(ms)
+              print("已开启 android:largeHeap=true")
+          else:
+              print("largeHeap 已存在，跳过")
+
+          if 'BarcodeScannerActivity' not in ms:
+              ms = re.sub(r'(<application[^>]*>)',
+                  r'\1\n        <activity android:name=".BarcodeScannerActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/Theme.AppCompat.NoActionBar" android:hardwareAccelerated="true" android:configChanges="orientation|screenSize|keyboardHidden" />',
+                  ms, count=1)
+              open(m, 'w', encoding='utf-8').write(ms)
+              print("Manifest Activity 已注册")
+          else:
+              print("Manifest Activity 已存在，跳过")
+
+          # ③-b v4.8：注册原生拍照 Activity
+          ms = open(m, encoding='utf-8').read()
+          if 'PhotoShootActivity' not in ms:
+              ms = re.sub(r'(<application[^>]*>)',
+                  # 不锁方向：拍照页跟随设备当前朝向（横屏作业也不强制转竖屏），布局本身自适应
+                  r'\1\n        <activity android:name=".PhotoShootActivity" android:exported="false" android:theme="@style/Theme.AppCompat.NoActionBar" android:hardwareAccelerated="true" android:configChanges="orientation|screenSize|keyboardHidden" />',
+                  ms, count=1)
+              open(m, 'w', encoding='utf-8').write(ms)
+              print("Manifest PhotoShootActivity 已注册")
+          else:
+              print("Manifest PhotoShootActivity 已存在，跳过")
+
+          # ④ 兜底相机权限（Camera 插件通常会加，这里确保一定在）
+          if 'android.permission.CAMERA' not in ms:
+              ms = re.sub(r'(<manifest[^>]*>)',
+                  r'\1\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />',
+                  ms, count=1)
+              open(m, 'w', encoding='utf-8').write(ms)
+              print("相机权限已添加")
+          else:
+              print("相机权限已存在，跳过")
+          PYEOF
+
+          # 版本号：手机「设置-应用信息」里看到 4.9.7 = 确认装的是新包
+      # v4.9.7：原生拍照页版面重做（背景透明/条码不截断/完成与快门同排/印章弧字）+ 启动页关闭按钮
+      - name: 版本号升为 4.9.7
+        run: |
+          sed -i -E 's/versionName "[0-9.]+"/versionName "4.9.7"/' android/app/build.gradle
+          sed -i -E 's/versionCode [0-9]+/versionCode 13/' android/app/build.gradle
+          grep -n "versionName\|versionCode" android/app/build.gradle
+
+      - name: Build debug APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+
+      # 硬验证：APK 里必须真的有相机权限，否则直接构建失败，防止出"哑包"
+      - name: 验证 APK 相机权限
+        run: |
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          echo "检查: $APK"
+          $BT/aapt2 dump badging "$APK" | grep -i "uses-permission.*CAMERA" || {
+            echo "!!! APK 缺少相机权限，构建判定失败"; exit 1; }
+          echo "✅ 相机权限已包含在 APK 中"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: photo-uploader-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
