@@ -188,8 +188,8 @@ jobs:
       # v4.9.7：原生拍照页版面重做（背景透明/条码不截断/完成与快门同排/印章弧字）+ 启动页关闭按钮
       - name: 版本号升为 4.9.7
         run: |
-          sed -i -E 's/versionName "[0-9.]+"/versionName "4.9.7"/' android/app/build.gradle
-          sed -i -E 's/versionCode [0-9]+/versionCode 13/' android/app/build.gradle
+          sed -i -E 's/versionName "[0-9.]+"/versionName "4.9.8"/' android/app/build.gradle
+          sed -i -E 's/versionCode [0-9]+/versionCode 14/' android/app/build.gradle
           grep -n "versionName\|versionCode" android/app/build.gradle
 
       - name: Build debug APK
