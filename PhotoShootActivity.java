@@ -134,10 +134,12 @@ public class PhotoShootActivity extends AppCompatActivity {
         previewView.setOnClickListener(v -> takeShot());
         root.addView(previewView);
 
-        // ---- 顶栏：只放追溯码（背景透明，文字自带胶囊 + 阴影） ----
+        // ---- 顶栏：追溯码居中 + 状态行左对齐（v4.9.8：状态行从底栏移到条码正下方） ----
         LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER);
+        // v4.9.8：由横排改竖排——第一行追溯码（水平居中），第二行「已拍 N 张」状态（左对齐），
+        // 状态紧贴条码、先看码再看张数，不再挤在快门上方遮挡画面
+        top.setOrientation(LinearLayout.VERTICAL);
+        top.setGravity(Gravity.CENTER_HORIZONTAL);
         top.setPadding(dp(12), statusBarHeight() + dp(8), dp(12), dp(6));
         // v4.9.7：不再铺整条 #66000000 黑带（原样占掉顶部一大片画面）
         top.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -159,9 +161,23 @@ public class PhotoShootActivity extends AppCompatActivity {
         code.setMaxWidth(maxW);
         code.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         top.addView(code);
+
+        // v4.9.8：状态行「已拍 N 张 · …」移到条码下方，左对齐（原来在底栏快门上方居中，
+        // 一直压着画面主体；挪上来后底栏只剩三个按钮，画面更干净）
+        countText = new TextView(this);
+        countText.setText("已拍 0 张 · 拍完点「完成」返回");
+        countText.setTextColor(Color.WHITE);
+        countText.setTextSize(13);
+        countText.setGravity(Gravity.START);
+        countText.setShadowLayer(6f, 0f, 1f, Color.BLACK);
+        LinearLayout.LayoutParams ctp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ctp.gravity = Gravity.START; // 左对齐
+        ctp.topMargin = dp(3);
+        countText.setLayoutParams(ctp);
+        top.addView(countText);
         root.addView(top);
 
-        // ---- 底栏：计数 + 一排 [完成 | 快门(印章弧字) | 补光] ----
+        // ---- 底栏：一排 [完成 | 快门(印章弧字) | 补光]（v4.9.8：计数行已上移到条码下方） ----
         LinearLayout bottom = new LinearLayout(this);
         bottom.setOrientation(LinearLayout.VERTICAL);
         bottom.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -170,17 +186,6 @@ public class PhotoShootActivity extends AppCompatActivity {
         bottom.setLayoutParams(bp);
         bottom.setPadding(0, dp(10), 0, dp(30));
         // v4.9.7：底栏同样不再铺整条黑带，全部交给按钮自身的胶囊背景
-
-        countText = new TextView(this);
-        countText.setText("已拍 0 张 · 拍完点「完成」返回");
-        countText.setTextColor(Color.WHITE);
-        countText.setTextSize(13);
-        countText.setGravity(Gravity.CENTER);
-        countText.setShadowLayer(6f, 0f, 1f, Color.BLACK);
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cp.bottomMargin = dp(12);
-        countText.setLayoutParams(cp);
-        bottom.addView(countText);
 
         // 一排三件：完成 / 快门 / 补光（垂直居中对齐，快门始终在正中）
         LinearLayout bar = new LinearLayout(this);
@@ -214,7 +219,9 @@ public class PhotoShootActivity extends AppCompatActivity {
         shootBtn.setBackgroundDrawable(makeRing());
         shootBtn.setOnClickListener(v -> takeShot());
 
-        ArcStampView arc = new ArcStampView(this, "点画面或此按钮拍照", 10.5f);
+        // v4.9.8：字号 10.5→9、弧跨度 130°→120° —— 8 个字收拢在快门正上方 ±30° 内，
+        // 两端不再探到「完成/补光」按钮上方（此前右端被补光按钮顶缘视觉遮挡）
+        ArcStampView arc = new ArcStampView(this, "点画面或此按钮拍照", 9f);
         arc.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         shootWrap.addView(shootBtn);
@@ -309,7 +316,7 @@ public class PhotoShootActivity extends AppCompatActivity {
             float cx = getWidth() / 2f, cy = getHeight() / 2f;
             oval.set(cx - r, cy - r, cx + r, cy + r);
             path.reset();
-            path.addArc(oval, 205f, 130f); // 顶弧：左上 → 正上 → 右上
+            path.addArc(oval, 210f, 120f); // 顶弧：左上 → 正上 → 右上（v4.9.8：跨度 130°→120°，字更聚拢不碰两侧按钮）
             PathMeasure pm = new PathMeasure(path, false);
             // hOffset = 弧长一半 + Align.CENTER → 整句以正上方为中心左右均分
             canvas.drawTextOnPath(text, path, pm.getLength() / 2f, 0f, paint);
