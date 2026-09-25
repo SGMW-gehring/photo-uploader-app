@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <link rel="icon" href="/icons/icon-192.png" />
-  <link rel="stylesheet" href="/style.css?v=45" />
+  <link rel="stylesheet" href="/style.css?v=46" />
 </head>
 <body>
   <!-- 单屏：全屏相机 + 覆盖层（识别/拍照共用同一摄像头） -->
@@ -25,7 +25,7 @@
     <!-- 顶部覆盖栏 -->
     <header class="topbar">
       <div class="top-row">
-        <div class="conn-wrap"><span id="connDot" class="dot"></span><span id="connStatus" class="conn">连接中…</span><span class="ver-tag" title="网页端版本">v4.9.7</span></div>
+        <div class="conn-wrap"><span id="connDot" class="dot"></span><span id="connStatus" class="conn">连接中…</span><span class="ver-tag" title="网页端版本">v4.9.8</span></div>
         <div class="switches">
           <label class="sw-inline" title="拍一张立即传一张">
             <span>实时上传</span>
@@ -79,6 +79,15 @@
       </div>
     </div>
 
+    <!-- v4.9.8：常驻小缩略图（画面右下角）—— 本组最新一张 + 张数角标 + 上传状态点；
+         与 lastShot 大图回显并存（那个是拍照瞬间 4.5 秒反馈，这个是一直在的状态提示）。
+         点击展开底部缩略条看全部；无照片时整块隐藏。旧缓存 HTML 没这块也完全不影响拍照上传。 -->
+    <button id="miniShot" class="mini-shot" aria-label="查看已拍照片" hidden>
+      <img id="miniShotImg" alt="最新一张" />
+      <span id="miniShotN" class="ms-n">0</span>
+      <span id="miniShotState" class="ms-state" aria-hidden="true"></span>
+    </button>
+
     <!-- 缩略条（可收起；实时上传时自动隐去） -->
     <div id="thumbsWrap" class="thumbs-wrap">
       <button id="thumbsToggle" class="thumbs-toggle">📷 <span id="thumbsCount">0</span> 张 <span id="thumbsCaret">▴</span></button>
@@ -126,8 +135,9 @@
       </button>
       <button id="btnUpload" class="bar-btn upload" disabled>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 3l5 5h-3v6h-4V8H7l5-5zM5 18h14v2H5v-2z"/></svg>
-        <span id="uploadLabel">上传</span>
-        <span id="countBadge" class="count-badge"><b id="photoCount">0</b>/<span id="countTarget">20</span></span>
+        <!-- v4.9.8：文字与 0/20 计数并到同一行（原来竖排三行把按钮撑到 88px 高，
+             和旁边 59px 的按钮参差不齐；包一层后高度与「识别/连拍」一致，底栏四键等宽等高） -->
+        <span class="upload-mid"><span id="uploadLabel">上传</span><span id="countBadge" class="count-badge"><b id="photoCount">0</b>/<span id="countTarget">20</span></span></span>
       </button>
     </div>
   </section>
@@ -220,6 +230,6 @@
   <script src="/lib/jsqr.js"></script>
   <script src="/lib/zxing.js"></script>
   <script src="/lib/tesseract/tesseract.min.js"></script>
-  <script src="/app.js?v=45"></script>
+  <script src="/app.js?v=46"></script>
 </body>
 </html>

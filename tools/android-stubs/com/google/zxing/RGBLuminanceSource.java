@@ -1,0 +1,1 @@
+package com.google.zxing; public class RGBLuminanceSource { public RGBLuminanceSource(int w,int h,int[] p){} }

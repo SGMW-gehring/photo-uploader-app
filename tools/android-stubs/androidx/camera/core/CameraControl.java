@@ -1,0 +1,1 @@
+package androidx.camera.core; public class CameraControl { public void startFocusAndMetering(FocusMeteringAction a){} public void enableTorch(boolean on){} }

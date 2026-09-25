@@ -1,0 +1,1 @@
+package android.graphics; public class Matrix { public void postRotate(float d){} }

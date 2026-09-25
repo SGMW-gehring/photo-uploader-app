@@ -1,0 +1,1 @@
+package android.webkit; public class WebView { public void evaluateJavascript(String s,Object cb){} }

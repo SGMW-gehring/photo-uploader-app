@@ -1,0 +1,1 @@
+package androidx.core.content; public class ContextCompat { public static java.util.concurrent.Executor getMainExecutor(android.content.Context c){return null;} }

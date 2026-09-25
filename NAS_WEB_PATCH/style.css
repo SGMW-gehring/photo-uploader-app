@@ -315,6 +315,37 @@ a.chip { text-decoration: none; }
 .bar-btn.upload.busy { opacity: .8; }
 .bar-btn.burst { background: #2f3b52; color: #cfe0ff; }
 .bar-btn.burst:active { background: #2f3b52; box-shadow: 0 0 0 3px rgba(47,123,255,.55); transform: scale(.94); }
+/* v4.9.8：「上传 0/20」的文字与计数同行（upload-mid 包一层），按钮高度与其他键一致 */
+.upload-mid { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.bar-btn.upload .count-badge { margin-top: 0; }
+
+/* v4.9.8：常驻小缩略图（画面右下角、底栏上方）—— 相机 App 的使用习惯：
+   拍完一眼能看到"刚才那张 + 已经拍了几张 + 传没传上"。 */
+.mini-shot {
+  position: fixed; right: 12px; bottom: calc(var(--bar-h) + 12px); z-index: 28;
+  width: 60px; height: 60px; padding: 0; border-radius: 12px; overflow: visible;
+  border: 2px solid rgba(255,255,255,.75); background: #111; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45);
+  animation: ms-fade .18s ease-out; /* v4.9.8：只用透明度渐入（不用 scale——老 WebView 动画被系统降级时不会卡在半尺寸帧） */
+}
+.mini-shot img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; display: block; }
+.mini-shot[hidden] { display: none; }
+.mini-shot .ms-n {
+  position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px;
+  border-radius: 10px; background: var(--primary); color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; padding: 0 5px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+.mini-shot .ms-state {
+  position: absolute; left: -6px; bottom: -6px; width: 18px; height: 18px;
+  border-radius: 50%; background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700;
+  line-height: 18px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+.mini-shot .ms-state.ok { background: #16a34a; }
+.mini-shot .ms-state.err { background: var(--danger); }
+.mini-shot .ms-state.busy { background: #2563eb; }
+@keyframes ms-fade { from { opacity: 0; } to { opacity: 1; } }
+.mini-shot:active { transform: scale(.92); }
 /* v4.4：所有可点元素按下时给一圈高亮，提供明确触感反馈 */
 .btn:active { transform: scale(.97); box-shadow: 0 0 0 3px rgba(47,123,255,.5); }
 .switch:active { box-shadow: 0 0 0 3px rgba(47,123,255,.45); }
@@ -407,26 +438,31 @@ button:focus-visible, .chip:focus-visible, .switch:focus-visible { outline: 3px 
 @media (orientation: portrait) {
   /* 竖屏底部栏为两行（换编码/连拍 + 识别/上传，快门跨两行居中），同步抬高 --bar-h，
      使缩略条、scan-actions、toast 等依赖该变量的浮层随之上移，不再与底部栏重叠。
-     v4.9.2：连拍移到上传正上方（右上格）；计数并入上传按钮，--bar-h 再抬 8px 容纳按钮内第二行胶囊 */
-  :root { --bar-h: 158px; }
+     v4.9.2：连拍移到上传正上方（右上格）；计数并入上传按钮，--bar-h 再抬 8px 容纳按钮内第二行胶囊
+     v4.9.8：两行改「等高拉伸」——四个 bar-btn 同宽（1fr 列）同高（1fr 行 + stretch），
+     上下行取同一行高（原先 auto 行高按内容各自撑开：更换45/识别59/连拍59/上传88px，参差不齐） */
+  :root { --bar-h: 152px; }
   .capture-bar {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    grid-template-rows: auto auto;
+    grid-template-rows: 1fr 1fr;
     grid-template-areas:
       "newqr shoot burst"
       "scan  shoot upload";
     gap: 8px;
-    align-items: end;
+    align-items: stretch;
     justify-items: stretch;
   }
-  #btnNewQr2 { display: flex; grid-area: newqr; }
+  #btnNewQr2 { display: flex; grid-area: newqr; justify-content: center; }
   #btnScan { grid-area: scan; }
   /* v4.9.5：快门在中间列居中（网格 justify-items:stretch 对有固定宽度的项等同 start，
-     不写这行快门会贴左，提示小字也会跟着偏） */
-  #btnShoot { grid-area: shoot; justify-self: center; align-self: end; }
+     不写这行快门会贴左，提示小字也会跟着偏）
+     v4.9.8：两行等高后快门改为垂直居中（原来 align-self:end 贴底，行高一致后会悬空） */
+  #btnShoot { grid-area: shoot; justify-self: center; align-self: center; }
   #btnBurst { grid-area: burst; }
   #btnUpload { grid-area: upload; }
+  /* v4.9.8：四键统一最小高度，纯文字的「更换追溯码」不再比带图标的矮一截 */
+  #mainBar .bar-btn { min-height: 54px; }
   /* v4.9.2：追溯码独占一行后顶栏变高，以下浮层同步下移，避免压住追溯码 */
   /* v4.9.5：顶栏多出「实时上传进度」一行，以下浮层继续下移避让（原 144 / 196） */
   .float-torch { top: calc(166px + env(safe-area-inset-top)); }
@@ -524,21 +560,23 @@ button:focus-visible, .chip:focus-visible, .switch:focus-visible { outline: 3px 
   .zoom-btn { width: 40px; height: 40px; font-size: 19px; }
   .scan-tip { font-size: 12px; }
 }
-/* 矮屏手机（竖屏且高 ≤ 700px）：底部栏压扁，给画面留更多空间 */
+/* 矮屏手机（竖屏且高 ≤ 700px）：底部栏压扁，给画面留更多空间
+   v4.9.8：按钮等高后栏体自然变矮，--bar-h 146 → 138 */
 @media (orientation: portrait) and (max-height: 700px) {
-  :root { --bar-h: 146px; }
+  :root { --bar-h: 138px; }
   .capture-bar { gap: 6px; padding: 6px 8px calc(8px + env(safe-area-inset-bottom)); }
-  #btnNewQr2 { padding: 8px 14px; min-height: 38px; font-size: 13px; }
+  #btnNewQr2 { padding: 8px 14px; font-size: 13px; }
   .bar-btn { padding: 7px 4px; }
   .count-badge { padding: 1px 8px; font-size: 10px; }
   .count-badge b { font-size: 12px; }
 }
 /* v4.8：超矮屏（竖屏且高 ≤ 640px，多见于老款/小屏机型）——
-   底栏、顶栏、快门、缩略条整体再压一档，保证「快门」始终在屏内且不被其他浮层挤出可视区 */
+   底栏、顶栏、快门、缩略条整体再压一档，保证「快门」始终在屏内且不被其他浮层挤出可视区
+   v4.9.8：等高网格下 flex-basis 无意义（grid 拉伸决定宽度），删掉避免误导；--bar-h 134 → 126 */
 @media (orientation: portrait) and (max-height: 640px) {
-  :root { --bar-h: 134px; }
+  :root { --bar-h: 126px; }
   .capture-bar { gap: 4px; padding: 4px 6px calc(12px + env(safe-area-inset-bottom, 0px)); }
-  .bar-btn { padding: 6px 3px; font-size: 10px; flex: 0 0 clamp(60px, 22vw, 76px); border-radius: 10px; }
+  .bar-btn { padding: 6px 3px; font-size: 10px; border-radius: 10px; min-height: 48px; }
   :root { --shoot: clamp(52px, 17vw, 64px); }
   .chip { padding: 5px 9px; font-size: 11px; }
   .topbar { padding: calc(6px + env(safe-area-inset-top)) 8px 6px; gap: 4px; }

@@ -1,0 +1,1 @@
+package androidx.camera.core; public class Camera { public CameraControl getCameraControl(){return null;} }

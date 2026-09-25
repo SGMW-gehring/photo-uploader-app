@@ -1,0 +1,1 @@
+package android.content; public class Intent { public Intent(){} public Intent(android.content.Context c, Class<?> cls){} public String getStringExtra(String k){return null;} public Intent putExtra(String k,String v){return this;} }

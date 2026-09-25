@@ -1,0 +1,1 @@
+package com.fnnas.photouploader; public class MainActivity extends androidx.appcompat.app.AppCompatActivity { public com.fnnas.photouploader.Bridge getBridge(){return null;} public void addJavascriptInterface(Object o,String n){} }

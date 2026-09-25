@@ -1,0 +1,1 @@
+package android.content; public class SharedPreferences { public Editor edit(){return new Editor();} public int getInt(String k,int d){return d;} public static class Editor { public Editor putInt(String k,int v){return this;} public void apply(){} } }

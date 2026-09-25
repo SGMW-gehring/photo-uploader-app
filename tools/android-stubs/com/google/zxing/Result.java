@@ -1,0 +1,1 @@
+package com.google.zxing; public class Result { public String getText(){return "";} }

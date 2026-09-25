@@ -1,0 +1,1 @@
+package androidx.camera.core; public class MeteringPointFactory { public MeteringPoint createPoint(float x,float y){return new MeteringPoint();} }

@@ -1,0 +1,1 @@
+package android.util; public class Base64 { public static final int NO_WRAP=0; public static String encodeToString(byte[] b,int f){return "";} public static byte[] decode(String s,int f){return new byte[0];} }

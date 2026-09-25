@@ -1,0 +1,1 @@
+package android.content.res; public class Resources { public static class DisplayMetrics { public float density=1f, scaledDensity=1f; public int widthPixels=1080; } public DisplayMetrics getDisplayMetrics(){return new DisplayMetrics();} public int getDimensionPixelSize(int id){return 0;} public int getIdentifier(String n,String d,String p){return 0;} }

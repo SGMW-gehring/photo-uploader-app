@@ -23,8 +23,30 @@ App/
 │   ├── PhotoShootBridge.java       # 原生拍照桥接（window.PhotoShootNative）
 │   ├── PhotoShootActivity.java     # 全屏原生拍照页（连拍、拍完免按「确定」）★v4.9.7 版面重做 + 内存加固
 │   └── AppControlBridge.java       # v4.9.7：App 控制桥（启动页「关闭」按钮真正退出）
+├── tools/
+│   ├── check-java.sh               # ★v4.9.7：本地 Java 编译自查（见下节）
+│   └── android-stubs/              # 68 个 Android/CameraX/ZXing 签名桩，只服务于自查
 └── NAS_WEB_PATCH/            # NAS 端 app.js 等，备查/离线部署用（不影响 App 构建）
 ```
+
+## 🚦 推仓库前先跑：本地 Java 编译自查（v4.9.7 新增）
+
+v4.9.7 之前踩过一次坑：改完 `native/*.java` 直接推仓库，GitHub Actions 跑 1 分 40 秒后报
+`fix the compilation error(s) / BUILD FAILED`。根因是 `PhotoShootActivity` 里把 `sprefs`、`safeMode`
+写成了 `onCreate()` 的**局部变量**，却被 `startCamera()` 引用 → `cannot find symbol`。
+
+为了不再白等一轮，本目录新增了**不需要 Android SDK、不需要 Gradle** 的本地自查：
+
+```bash
+bash tools/check-java.sh        # 只需本机有 javac（JDK）
+```
+
+- ✅ 输出 `编译通过：0 错误` → 可以放心推仓库；
+- ❌ 列出 `error: / symbol: / location:` → 先在本地改完再推。
+
+原理：`tools/android-stubs/` 有 68 个最小签名桩（Android / CameraX / ZXing / org.json），javac 会按
+**真实类型规则**做符号解析，所以变量作用域、方法签名、参数类型这类错误都能抓出来——是**真编译**，
+不是文本扫描。（注：桩只覆盖本项目用到的 API，不能替代真机运行验证。）
 
 > ⚠️ **最容易漏的一步**：`native/` 是隐藏在文档里的关键目录。只推 `www/` + 配置文件也能构建成功，
 > 但 APK 里不会有原生拍照页/原生扫码页，现象是**拍照必须按「确定」且不能连拍**。

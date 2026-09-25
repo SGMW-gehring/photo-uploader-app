@@ -1,0 +1,1 @@
+package com.google.zxing; public enum DecodeHintType { TRY_HARDER, POSSIBLE_FORMATS, ALSO_INVERTED, PURE_BARCODE }

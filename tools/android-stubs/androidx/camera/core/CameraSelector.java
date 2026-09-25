@@ -1,0 +1,1 @@
+package androidx.camera.core; public class CameraSelector { public static final int LENS_FACING_BACK=0; public static class Builder { public Builder requireLensFacing(int f){return this;} public CameraSelector build(){return new CameraSelector();} } }

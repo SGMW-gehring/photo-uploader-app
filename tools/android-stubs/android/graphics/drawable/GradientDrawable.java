@@ -1,0 +1,1 @@
+package android.graphics.drawable; import android.graphics.Color; public class GradientDrawable extends Drawable { public static final int RECTANGLE=0, OVAL=1; public void setShape(int s){} public void setCornerRadius(float r){} public void setColor(int c){} public void setStroke(int w,int c){} }

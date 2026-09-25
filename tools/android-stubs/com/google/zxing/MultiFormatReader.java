@@ -1,0 +1,1 @@
+package com.google.zxing; import java.util.Map; public class MultiFormatReader { public void setHints(Map h){} public Result decode(BinaryBitmap b){return null;} public Result decodeWithState(BinaryBitmap b){return null;} public void reset(){} }

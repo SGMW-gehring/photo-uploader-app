@@ -1,0 +1,1 @@
+package android.view; import android.content.Context; public class ViewGroup extends View { public static class LayoutParams { public static final int MATCH_PARENT=-1, WRAP_CONTENT=-2; public int width,height; public LayoutParams(int w,int h){width=w;height=h;} } public ViewGroup(Context c){super(c);} }

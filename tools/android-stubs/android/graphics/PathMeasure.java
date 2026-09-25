@@ -1,0 +1,1 @@
+package android.graphics; public class PathMeasure { public PathMeasure(Path p,boolean c){} public float getLength(){return 0f;} }

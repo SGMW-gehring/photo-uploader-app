@@ -1,0 +1,1 @@
+package com.google.common.util.concurrent; public abstract class ListenableFuture<T> implements java.util.concurrent.Future<T> { public void addListener(Runnable r,java.util.concurrent.Executor e){} }

@@ -1705,9 +1705,33 @@
       if (last) last.scrollIntoView({ behavior: 'smooth', inline: 'end', block: 'nearest' });
     }
     $('thumbsCount').textContent = state.photos.length;
+    updateMiniShot(); // v4.9.8：同步右下角常驻小缩略图（所有照片变化路径都会走到这里）
     updateCounter();
     // 实时上传且有已传照片时，自动收起缩略条，避免占用画面
     if (state.realtime && state.photos.some((p) => p.uploaded)) collapseThumbs(true);
+  }
+
+  // ---------- v4.9.8：常驻小缩略图（画面右下角） ----------
+  // 相机 App 的使用习惯：拍完一眼看到"刚才那张 + 拍了几张 + 传没传上"。
+  // 数据源与缩略条同源（state.photos），任何增删/状态变化经 renderThumbs() 汇聚到这里。
+  // 状态点：绿✓=全部已传 · 蓝=上传中 · 红!=有失败 · 橙=待上传；角标=本组张数。
+  function updateMiniShot() {
+    const box = $('miniShot'), img = $('miniShotImg'), n = $('miniShotN'), st = $('miniShotState');
+    if (!box || !img) return; // 旧缓存 HTML 没这块，静默跳过
+    if (state.photos.length === 0) { box.hidden = true; return; }
+    const last = state.photos[state.photos.length - 1];
+    if (!last.url) { box.hidden = true; return; }
+    img.src = last.url;
+    n.textContent = String(state.photos.length);
+    const pending = state.photos.some((p) => !p.uploaded);
+    const uploading = state.photos.some((p) => p.uploading);
+    const failed = state.photos.some((p) => p.failed && !p.uploaded);
+    st.className = 'ms-state';
+    if (uploading) { st.textContent = '…'; st.classList.add('busy'); }
+    else if (failed) { st.textContent = '!'; st.classList.add('err'); }
+    else if (pending) { st.textContent = ''; }
+    else { st.textContent = '✓'; st.classList.add('ok'); }
+    box.hidden = false;
   }
 
   // 删除确认（大按钮，戴手套也好点）
@@ -1993,6 +2017,16 @@
       else if (pendingDeleteIndex >= 0) { doDelete(pendingDeleteIndex); }
       pendingDeleteIndex = -1;
     });
+
+    // v4.9.8：点右下角常驻小缩略图 → 展开底部缩略条看全部（收起态时展开；已展开时无感）
+    const msBtn = $('miniShot');
+    if (msBtn) {
+      msBtn.addEventListener('click', () => {
+        collapseThumbs(false);
+        const strip = $('thumbs');
+        if (strip && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = strip.scrollWidth;
+      });
+    }
 
     // 音量键快门
     document.addEventListener('keydown', (e) => {

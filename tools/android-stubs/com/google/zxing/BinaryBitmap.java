@@ -1,0 +1,1 @@
+package com.google.zxing; public class BinaryBitmap { public BinaryBitmap(Object s){} }
