@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <link rel="icon" href="/icons/icon-192.png" />
-  <link rel="stylesheet" href="/style.css?v=46" />
+  <link rel="stylesheet" href="/style.css?v=47" />
 </head>
 <body>
   <!-- 单屏：全屏相机 + 覆盖层（识别/拍照共用同一摄像头） -->
@@ -25,7 +25,7 @@
     <!-- 顶部覆盖栏 -->
     <header class="topbar">
       <div class="top-row">
-        <div class="conn-wrap"><span id="connDot" class="dot"></span><span id="connStatus" class="conn">连接中…</span><span class="ver-tag" title="网页端版本">v4.9.8</span></div>
+        <div class="conn-wrap"><span id="connDot" class="dot"></span><span id="connStatus" class="conn">连接中…</span><span class="ver-tag" title="网页端版本">v4.9.11</span></div>
         <div class="switches">
           <label class="sw-inline" title="拍一张立即传一张">
             <span>实时上传</span>
@@ -39,6 +39,9 @@
             <span>水印</span>
             <button id="btnWatermark" class="switch sm" role="switch" aria-checked="true"><span class="knob"></span></button>
           </label>
+          <!-- v4.9.11：上传页面右上角「关闭」按钮（只在 App 里显示，浏览器里隐藏）——
+               此前只有启动识别页有，进了上传页就只能靠系统返回键，现场换人/卡住时不方便 -->
+          <button id="btnExit" class="exit-btn" type="button" aria-label="关闭应用" title="关闭应用" hidden>✕</button>
         </div>
       </div>
       <!-- v4.9.2：追溯码与「查询照片」互换位置；追溯码独占一整行（flex-basis:100%+order），
@@ -112,21 +115,9 @@
             <circle id="ringFg" class="ring-fg" cx="38" cy="38" r="34"></circle>
           </svg>
           <span class="shoot-core"></span>
-          <!-- v4.9.5：提示小字改为「公章式弧形环绕」—— 沿快门圆环上缘排布（像公章顶部那圈字），
-               每个字随弧微倾、字头朝弧外。--a 从 -100° 到 +100°（0° = 正上方），共 9 字完整原句；
-               纯 CSS 逐字定位：字号固定不随按钮缩放变小，老小屏也看得清；
-               旧缓存 HTML 没有这层时快门照常工作（只是没有提示文字），优雅降级。 -->
-          <span class="shoot-arc" aria-hidden="true">
-            <i style="--a:-100deg"><b>点</b></i>
-            <i style="--a:-75deg"><b>画</b></i>
-            <i style="--a:-50deg"><b>面</b></i>
-            <i style="--a:-25deg"><b>或</b></i>
-            <i style="--a:0deg"><b>此</b></i>
-            <i style="--a:25deg"><b>按</b></i>
-            <i style="--a:50deg"><b>钮</b></i>
-            <i style="--a:75deg"><b>拍</b></i>
-            <i style="--a:100deg"><b>照</b></i>
-          </span>
+          <!-- v4.9.11：网页端上传页的弧形提示小字整体取消（现场反馈：快门白环压字、各机型
+               屏幕密度不同调不好，留着反而显得脏）。快门只保留圆环与白核。
+               旧缓存 HTML 带这层也没关系：style.css 里 .shoot-arc 已置 display:none，优雅降级。 -->
         </span>
       </button>
       <button id="btnBurst" class="bar-btn burst" aria-label="连拍">
@@ -211,6 +202,24 @@
     </div>
   </div>
 
+  <!-- v4.9.11：关闭「实时上传」前的告知弹层。
+       之前点开关只有一个一闪而过的 toast，现场以为"点了没反应"；
+       与「水印 / 自动识别」保持一致：先弹层说明后果，明确「保持开启」或「仍要关闭」。 -->
+  <div id="realtimeModal" class="modal">
+    <div class="modal-card">
+      <h3>关闭实时上传？</h3>
+      <p class="hint warn-text">
+        关闭后<span class="hl">拍完的照片不会自动传</span>，要<span class="hl">手动点「上传」</span>才会发到 NAS。<br />
+        忙起来容易忘记上传，照片会一直堆在手机里，<span class="hl">换组或清缓存时可能整组丢失</span>。<br />
+        建议保持开启（实时上传不影响拍照速度，也不影响识别）。
+      </p>
+      <div class="modal-actions">
+        <button id="rtCancel" class="btn ghost">保持开启</button>
+        <button id="rtOk" class="btn danger">仍要关闭</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 定格识别弹层：拍一张固定在页面上供识别（可看清拍到了什么，失败可原地重拍） -->
   <div id="freezeModal" class="modal">
     <div class="modal-card freeze-card">
@@ -230,6 +239,6 @@
   <script src="/lib/jsqr.js"></script>
   <script src="/lib/zxing.js"></script>
   <script src="/lib/tesseract/tesseract.min.js"></script>
-  <script src="/app.js?v=46"></script>
+  <script src="/app.js?v=47"></script>
 </body>
 </html>

@@ -85,8 +85,18 @@ body.cam-on #camPreview { background: transparent; }
 }
 .conn.ok { color: #bff3d0; }
 .conn.err { color: #ffc9c9; }
-.switches { display: flex; gap: 10px; }
+.switches { display: flex; gap: 10px; align-items: center; }
 .sw-inline { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; }
+/* v4.9.11：上传页右上角「关闭」按钮 —— 只在 App 内显示（JS 按 inShell() 控制 hidden）。
+   做成圆形小按钮，跟开关同一行，不占额外高度、不挡顶栏其它元素。 */
+.exit-btn {
+  flex: none; width: 30px; height: 30px; min-width: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; line-height: 1; border-radius: 50%;
+  background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.32); color: #fff;
+}
+.exit-btn:active { background: rgba(0,0,0,.6); }
+.exit-btn[hidden] { display: none; }
 
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 /* v4.8：追溯码 chip 必须完整显示（Xiaomi 17 Pro Max 等机型反馈「识别出来填不到框里」——
@@ -192,28 +202,13 @@ a.chip { text-decoration: none; }
   pointer-events: none;
 }
 @keyframes lsIn { from { opacity: 0; } to { opacity: 1; } }
-/* v4.9.5：拍照提示 —— 「公章式」弧形环绕文字（沿快门圆环上缘，像公章顶部那圈字）
-   外层 i 负责「绕圆心转到位」（rotate 到位 + 沿半径外移），内层 b 固定 rotate(90°) 把字头转回朝外；
-   两层拆开是为了让百分比位移（居中）不会被旋转带偏。
-   --a 是每个字相对「正上方」的偏角：-100°（左下端）… +100°（右下端），共 9 字完整原句。 */
+/* v4.9.11：网页端上传页的弧形提示小字已取消（HTML 里那层也删了）。
+   这里保留 display:none 而不是删掉整段规则：手机/浏览器可能还缓存着旧 HTML，
+   带 .shoot-arc 那层时靠这一行让它不显示，避免旧缓存页面仍出现压字的小字。 */
 .shoot-arc {
-  position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 2;
-  pointer-events: none;
+  display: none !important;
 }
-.shoot-arc i {
-  position: absolute; left: 0; top: 0; width: 0; height: 0;
-  transform-origin: 0 0;
-  transform: rotate(calc(var(--a) - 90deg)) translateX(calc(var(--shoot) / 2 + 6px));
-}
-.shoot-arc i b {
-  position: absolute; left: 0; top: 0;
-  /* 恒定 +90°：抵消外层的 -90° 基准，字头沿半径朝弧外（正上方的字正立、两侧字随弧倾） */
-  transform: translate(-50%, -50%) rotate(90deg);
-  font-weight: 700; font-size: clamp(9px, calc(var(--shoot) / 7), 13px); line-height: 1;
-  color: rgba(255,255,255,.95); white-space: nowrap;
-  /* 描边 + 投影：无论压在亮画面还是暗画面上都读得清 */
-  text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,.9);
-}
+
 
 /* 取景框引导（识别模式显示） */
 .scan-frame { display: none; position: absolute; inset: 0; z-index: 4; }
