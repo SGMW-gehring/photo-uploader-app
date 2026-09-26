@@ -259,6 +259,29 @@ jobs:
             echo "!!! APK 缺少相机权限，构建判定失败"; exit 1; }
           echo "✅ 相机权限已包含在 APK 中"
 
+      # v4.9.11b 固定签名（关键修复）：Actions runner 的 debug 签名每次运行都随机生成，
+      # 导致「已装版本」与「新包」签名不一致，覆盖安装必报
+      # 「應用程式套件與現有套件衝突 / 開發者簽名有異常」，App 自更新也因此永远失败。
+      # 改用仓库内置的固定 keystore + zipalign + apksigner 签名，此后所有版本签名一致，
+      # 覆盖安装 / App 内自更新均正常。过渡期（第一次换签名）需先卸载旧 App 再装一次。
+      - name: 固定签名（zipalign + apksigner）
+        run: |
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          echo "签名: $APK"
+          "$BT/zipalign" -f 4 "$APK" android/app/build/outputs/apk/debug/app-aligned.apk
+          "$BT/apksigner" sign \
+            --ks keystore/photo-uploader.keystore \
+            --ks-key-alias photouploader \
+            --ks-pass pass:fnnas-photo-uploader \
+            --key-pass pass:fnnas-photo-uploader \
+            --out android/app/build/outputs/apk/debug/app-signed.apk \
+            android/app/build/outputs/apk/debug/app-aligned.apk
+          "$BT/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-signed.apk
+          mv -f android/app/build/outputs/apk/debug/app-signed.apk "$APK"
+          rm -f android/app/build/outputs/apk/debug/app-aligned.apk
+          echo "✅ 已用固定 keystore 签名"
+
       # v4.9.11：产物直接叫 photo-uploader-v4.9.11.apk —— 下载下来就能直接丢进
       # /vol1/1000/photo-upgrade，不用再手工改名（服务端靠文件名里的版本号判定最新版本）
       - name: APK 按版本号改名
