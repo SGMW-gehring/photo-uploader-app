@@ -52,6 +52,8 @@ jobs:
           cp native/PhotoShootActivity.java "$DST/"
           # v4.9.7：App 控制桥（启动页「关闭」按钮真正退出 App）
           cp native/AppControlBridge.java "$DST/"
+          # v4.9.9：App 内自更新桥（检测新版 → 系统下载 → 自动拉起安装界面）
+          cp native/AppUpdateBridge.java "$DST/"
           ls -l "$DST"
 
       - name: Sync native
@@ -112,6 +114,10 @@ jobs:
                 // v4.9.7：App 控制桥接 —— 启动页「关闭」按钮调 window.AppControlNative._exit() 真正退出
                 AppControlBridge.bind(this);
                 this.bridge.getWebView().addJavascriptInterface(new AppControlBridge(), "AppControlNative");
+                // v4.9.9：App 内自更新桥接 —— JS 调 window.AppUpdateNative.update(apkUrl)
+                // 走系统 DownloadManager 下载到 App 私有目录，下完用 FileProvider 拉起安装界面
+                AppUpdateBridge.bind(this);
+                this.bridge.getWebView().addJavascriptInterface(new AppUpdateBridge(), "AppUpdateNative");
               }
             }
           '''
@@ -173,6 +179,38 @@ jobs:
           else:
               print("Manifest PhotoShootActivity 已存在，跳过")
 
+          # ③-c v4.9.9：App 内自更新所需的权限与 FileProvider
+          #     REQUEST_INSTALL_PACKAGES：允许本 App 发起安装（Android 8+ 必需，首次需用户在设置里开一次）
+          ms = open(m, encoding='utf-8').read()
+          if 'REQUEST_INSTALL_PACKAGES' not in ms:
+              ms = re.sub(r'(<manifest[^>]*>)',
+                  r'\1\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />',
+                  ms, count=1)
+              open(m, 'w', encoding='utf-8').write(ms)
+              print("已添加 REQUEST_INSTALL_PACKAGES 权限")
+          else:
+              print("REQUEST_INSTALL_PACKAGES 已存在，跳过")
+
+          #     FileProvider：把私有目录里的 APK 授权给系统安装器读取（Android 7+ 不能用 file:// 跨应用）
+          ms = open(m, encoding='utf-8').read()
+          if '.fileprovider' not in ms:
+              ms = re.sub(r'(<application[^>]*>)',
+                  r'''\1
+              <provider
+                  android:name="androidx.core.content.FileProvider"
+                  android:authorities="${applicationId}.fileprovider"
+                  android:exported="false"
+                  android:grantUriPermissions="true">
+                  <meta-data
+                      android:name="android.support.FILE_PROVIDER_PATHS"
+                      android:resource="@xml/file_paths" />
+              </provider>''',
+                  ms, count=1)
+              open(m, 'w', encoding='utf-8').write(ms)
+              print("FileProvider 已注册")
+          else:
+              print("FileProvider 已存在，跳过")
+
           # ④ 兜底相机权限（Camera 插件通常会加，这里确保一定在）
           if 'android.permission.CAMERA' not in ms:
               ms = re.sub(r'(<manifest[^>]*>)',
@@ -184,12 +222,28 @@ jobs:
               print("相机权限已存在，跳过")
           PYEOF
 
-          # 版本号：手机「设置-应用信息」里看到 4.9.7 = 确认装的是新包
-      # v4.9.7：原生拍照页版面重做（背景透明/条码不截断/完成与快门同排/印章弧字）+ 启动页关闭按钮
-      - name: 版本号升为 4.9.7
+          # v4.9.9：FileProvider 的路径白名单（APK 落在 App 私有 Download 目录）
+      #         没有它，FileProvider.getUriForFile 会抛 IllegalArgumentException
+      - name: 生成 FileProvider 路径配置
         run: |
-          sed -i -E 's/versionName "[0-9.]+"/versionName "4.9.8"/' android/app/build.gradle
-          sed -i -E 's/versionCode [0-9]+/versionCode 14/' android/app/build.gradle
+          python3 - <<'PYEOF'
+          import os
+          p = 'android/app/src/main/res/xml/file_paths.xml'
+          os.makedirs(os.path.dirname(p), exist_ok=True)
+          xml = '<?xml version="1.0" encoding="utf-8"?>\n' \
+                '<paths xmlns:android="http://schemas.android.com/apk/res/android">\n' \
+                '    <external-files-path name="updates" path="Download/" />\n' \
+                '</paths>\n'
+          open(p, 'w', encoding='utf-8').write(xml)
+          print(open(p, encoding='utf-8').read())
+          PYEOF
+
+      # 版本号：手机「设置-应用信息」里看到 4.9.10 = 确认装的是新包
+      # v4.9.10：拍照页弧形提示字取消 + 自更新机制延续，不再需要人工传 APK 到每台手机
+      - name: 版本号升为 4.9.10
+        run: |
+          sed -i -E 's/versionName "[0-9.]+"/versionName "4.9.10"/' android/app/build.gradle
+          sed -i -E 's/versionCode [0-9]+/versionCode 16/' android/app/build.gradle
           grep -n "versionName\|versionCode" android/app/build.gradle
 
       - name: Build debug APK
