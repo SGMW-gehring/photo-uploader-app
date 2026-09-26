@@ -714,7 +714,51 @@
 // v4.9.5：改为「App vX · NAS vX」双端对照 —— NAS 版本从 /api/health 实时取，
 // 即使 APK 没重打也能立刻看出「服务端已升级、App 壳还是旧的」，不再靠猜。
 (function () {
-  var APP_VER = '4.9.8'; // 与 NAS/public/index.html 的 ver-tag、server.js 的 APP_VERSION 保持一致
+  var APP_VER = '4.9.10'; // 与 NAS/public/index.html 的 ver-tag、server.js 的 APP_VERSION 保持一致
+
+  // v4.9.9：App 内自更新 —— NAS 上放了更新的 APK 就提示，点一下走系统下载+自动拉起安装。
+  // 版本号比较（4.9.9 > 4.9.8）
+  function verGt(a, b) {
+    var pa = String(a || '').replace(/^v/, '').split('.').map(Number);
+    var pb = String(b || '').replace(/^v/, '').split('.').map(Number);
+    for (var i = 0; i < 3; i++) {
+      var x = pa[i] || 0, y = pb[i] || 0;
+      if (x > y) return true;
+      if (x < y) return false;
+    }
+    return false;
+  }
+  // 底部更新提示条
+  function showUpdateBar(base, au) {
+    if (document.getElementById('puUpdateBar')) return;
+    var bar = document.createElement('div');
+    bar.id = 'puUpdateBar';
+    bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:34px;z-index:20;display:flex;align-items:center;gap:10px;' +
+      'padding:10px 12px;border-radius:12px;background:#ff8c1a;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,.35);font-size:13px;';
+    var txt = document.createElement('div');
+    txt.style.cssText = 'flex:1;line-height:1.35;';
+    var mb = au.size ? '（' + Math.round(au.size / 1048576) + 'MB）' : '';
+    txt.textContent = '发现新版本 ' + au.version + mb + (au.note ? ' · ' + au.note : '') + '，更新后不用再传文件装包。';
+    var btn = document.createElement('button');
+    btn.textContent = '立即更新';
+    btn.style.cssText = 'flex:none;padding:7px 14px;border:0;border-radius:9px;background:#fff;color:#c2410c;font-weight:700;font-size:13px;';
+    btn.onclick = function () {
+      btn.disabled = true; btn.textContent = '下载中…';
+      var url = base + au.url;
+      try {
+        // 新 APK：原生桥下载 → 下完自动弹安装界面
+        if (window.AppUpdateNative && typeof window.AppUpdateNative.update === 'function') {
+          window.AppUpdateNative.update(url);
+        } else {
+          // 旧 APK / 浏览器：交给 WebView 的下载监听（系统 DownloadManager），下完点通知安装
+          window.location.href = url;
+        }
+      } catch (e) { window.location.href = url; }
+    };
+    bar.appendChild(txt); bar.appendChild(btn);
+    document.body.appendChild(bar);
+  }
+
   var t = document.createElement('div');
   t.textContent = 'App v' + APP_VER + ' · NAS 检测中…';
   t.style.cssText = 'position:fixed;left:0;right:0;bottom:6px;text-align:center;color:#8b93a5;font-size:11px;opacity:.75;pointer-events:none;z-index:9;';
@@ -732,6 +776,9 @@
         var same = nv === APP_VER;
         t.textContent = 'App v' + APP_VER + ' · NAS v' + nv + (same ? '' : '（版本不一致，请更新对应一端）');
         t.style.color = same ? '#8b93a5' : '#ffb020';
+        // v4.9.9：NAS 上有更新的 APK → 底部提示一键更新
+        var au = j && j.appUpdate;
+        if (au && au.version && verGt(au.version, APP_VER)) showUpdateBar(base, au);
       })
       .catch(function () { if (!done) { done = true; clearTimeout(timer); t.textContent = 'App v' + APP_VER + ' · NAS 未连接'; } });
   } catch (e) { /* 拿不到地址就只显示 App 版本 */ }

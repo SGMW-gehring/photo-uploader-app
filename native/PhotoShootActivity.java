@@ -219,13 +219,10 @@ public class PhotoShootActivity extends AppCompatActivity {
         shootBtn.setBackgroundDrawable(makeRing());
         shootBtn.setOnClickListener(v -> takeShot());
 
-        // v4.9.8：字号 10.5→9、弧跨度 130°→120° —— 8 个字收拢在快门正上方 ±30° 内，
-        // 两端不再探到「完成/补光」按钮上方（此前右端被补光按钮顶缘视觉遮挡）
-        ArcStampView arc = new ArcStampView(this, "点画面或此按钮拍照", 9f);
-        arc.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // v4.9.10：弧形提示字整体取消 —— 真机上快门白环会压住弧字（各机型屏幕密度/快门尺寸
+        // 不同，调参无法保证都干净），按现场反馈直接去掉，页面更干净。拍照操作无需文字说明。
 
         shootWrap.addView(shootBtn);
-        shootWrap.addView(arc);
 
         TextView flash = new TextView(this);
         flash.setText("💡 补光");
@@ -285,46 +282,6 @@ public class PhotoShootActivity extends AppCompatActivity {
         g.setColor(Color.parseColor("#22FFFFFF"));
         g.setStroke(dp(3), Color.WHITE);
         return g;
-    }
-
-    /**
-     * v4.9.7：印章式弧形文字（公章顶弧）。
-     * 沿快门圆环上缘排布，字头一律朝弧外 —— 与网页上传页快门的公章顶弧同一观感。
-     * Android 角度：0°=3 点方向、顺时针为正，顶部为 270°；取 205°→335° 即顶弧。
-     */
-    private static class ArcStampView extends View {
-        private final String text;
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path path = new Path();
-        private final RectF oval = new RectF();
-
-        ArcStampView(android.content.Context c, String text, float sp) {
-            super(c);
-            this.text = text;
-            paint.setColor(Color.WHITE);
-            paint.setTextSize(sp * getResources().getDisplayMetrics().scaledDensity);
-            paint.setTextAlign(Paint.Align.CENTER);
-            paint.setFakeBoldText(true);
-            paint.setShadowLayer(4f, 0f, 1f, Color.BLACK);
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            if (text == null || text.length() == 0) return;
-            float r = Math.min(getWidth(), getHeight()) / 2f - dp(2);
-            float cx = getWidth() / 2f, cy = getHeight() / 2f;
-            oval.set(cx - r, cy - r, cx + r, cy + r);
-            path.reset();
-            path.addArc(oval, 210f, 120f); // 顶弧：左上 → 正上 → 右上（v4.9.8：跨度 130°→120°，字更聚拢不碰两侧按钮）
-            PathMeasure pm = new PathMeasure(path, false);
-            // hOffset = 弧长一半 + Align.CENTER → 整句以正上方为中心左右均分
-            canvas.drawTextOnPath(text, path, pm.getLength() / 2f, 0f, paint);
-        }
-
-        private int dp(int v) {
-            return Math.round(getResources().getDisplayMetrics().density * v);
-        }
     }
 
     private int dp(int v) {
