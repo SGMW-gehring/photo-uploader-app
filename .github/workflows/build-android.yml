@@ -238,12 +238,12 @@ jobs:
           print(open(p, encoding='utf-8').read())
           PYEOF
 
-      # 版本号：手机「设置-应用信息」里看到 4.9.10 = 确认装的是新包
-      # v4.9.10：拍照页弧形提示字取消 + 自更新机制延续，不再需要人工传 APK 到每台手机
-      - name: 版本号升为 4.9.10
+      # 版本号：手机「设置-应用信息」里看到 4.9.11 = 确认装的是新包
+      # v4.9.11：NAS 页面加「关闭」按钮、关闭实时上传加确认弹层；APK 产物自动按版本号命名
+      - name: 版本号升为 4.9.11
         run: |
-          sed -i -E 's/versionName "[0-9.]+"/versionName "4.9.10"/' android/app/build.gradle
-          sed -i -E 's/versionCode [0-9]+/versionCode 16/' android/app/build.gradle
+          sed -i -E 's/versionName "[0-9.]+"/versionName "4.9.11"/' android/app/build.gradle
+          sed -i -E 's/versionCode [0-9]+/versionCode 17/' android/app/build.gradle
           grep -n "versionName\|versionCode" android/app/build.gradle
 
       - name: Build debug APK
@@ -259,8 +259,18 @@ jobs:
             echo "!!! APK 缺少相机权限，构建判定失败"; exit 1; }
           echo "✅ 相机权限已包含在 APK 中"
 
+      # v4.9.11：产物直接叫 photo-uploader-v4.9.11.apk —— 下载下来就能直接丢进
+      # /vol1/1000/photo-upgrade，不用再手工改名（服务端靠文件名里的版本号判定最新版本）
+      - name: APK 按版本号改名
+        run: |
+          cd android/app/build/outputs/apk/debug
+          APK=$(ls *.apk | head -1)
+          echo "原始产物: $APK"
+          mv -f "$APK" "photo-uploader-v4.9.11.apk"
+          ls -lh
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: photo-uploader-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: photo-uploader-v4.9.11.apk
+          path: android/app/build/outputs/apk/debug/photo-uploader-v4.9.11.apk
